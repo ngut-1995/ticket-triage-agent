@@ -1,0 +1,9 @@
+{
+  "id": "2001",
+  "title": "Expensio crashes when exporting a report to PDF",
+  "body": "Since this morning's update, Expensio closes without any error when I export an expense report to PDF.\n\nSteps:\n1. Open any submitted report (I tried ER-55812 and ER-55790)\n2. Click Export > PDF\n3. The window freezes for ~5 seconds and then the app closes\n\nEveryone in Accounts Payable hits this, I checked with three colleagues. We can still export to CSV as a workaround, but auditors need the PDFs for the month-end close.\n\nExpensio version shown in Help > About: 4.12.0",
+  "createdAt": "2026-09-28T09:12:00Z",
+  "reporter": { "name": "Lucía Ferreyra", "email": "lferreyra@example.com", "department": "Accounts Payable" },
+  "reporterPriority": "High",
+  "attachments": [{ "filename": "expensio-freeze.png", "mimeType": "image/png" }]
+}

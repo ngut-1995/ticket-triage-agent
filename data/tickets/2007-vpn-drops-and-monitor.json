@@ -1,0 +1,8 @@
+{
+  "id": "2007",
+  "title": "VPN keeps disconnecting + second monitor",
+  "body": "Two things:\n\n1) When I work from home the VPN (GlobalProtect) disconnects roughly every 20 minutes and I have to log in again. It started last Monday. When it drops I lose my Teams call and any unsaved work in the ERP. My home internet is fine otherwise, Netflix/Zoom don't drop.\n\n2) Also, could I get a second monitor for my desk at the office? Working with two spreadsheets side by side on a 14\" laptop screen is painful.\n\nThanks!",
+  "createdAt": "2026-10-01T16:47:00Z",
+  "reporter": { "name": "Camila Ortiz", "email": "cortiz@example.com", "department": "Supply Chain" },
+  "reporterPriority": "High"
+}

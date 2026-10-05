@@ -1,0 +1,7 @@
+{
+  "id": "2002",
+  "title": "3rd floor printer says paper jam but there is no paper stuck",
+  "body": "The big printer on the 3rd floor (PRN-3F-01) shows \"Paper jam - Tray 2\" on its screen and refuses every job. We opened all the trays and doors and there's nothing stuck. Turned it off and on twice, same message.\n\nNobody on the 3rd floor can print right now, we're all walking down to the 2nd floor printer.",
+  "createdAt": "2026-09-29T08:40:00Z",
+  "reporter": { "name": "Martín Sosa", "email": "msosa@example.com", "department": "Sales" }
+}

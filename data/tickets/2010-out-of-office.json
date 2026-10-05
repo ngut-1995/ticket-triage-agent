@@ -1,0 +1,7 @@
+{
+  "id": "2010",
+  "title": "Automatic reply: [Ticket #1987] Your request has been updated",
+  "body": "Thank you for your message. I am out of the office from October 3 to October 14 with limited access to email. For urgent matters please contact Natalia Vega (nvega@example.com).\n\nBest regards,\nJorge Paz",
+  "createdAt": "2026-10-03T07:00:12Z",
+  "reporter": { "name": "Jorge Paz", "email": "jpaz@example.com" }
+}

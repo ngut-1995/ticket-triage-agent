@@ -1,0 +1,7 @@
+{
+  "id": "2009",
+  "title": "Expensio freezes and closes",
+  "body": "When I click Export and choose PDF on my expense report, Expensio freezes and then just closes. I tried twice. CSV export works, so I sent that to my manager instead, but I'd like to have the PDF version.",
+  "createdAt": "2026-10-02T15:12:00Z",
+  "reporter": { "name": "Federico Luna", "email": "fluna@example.com", "department": "Sales" }
+}
