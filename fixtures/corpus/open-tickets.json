@@ -1,0 +1,58 @@
+[
+  {
+    "id": "1040",
+    "title": "Laptop battery drains in under an hour",
+    "body": "My ThinkPad battery goes from 100% to 0% in about 50 minutes even with only Outlook and Teams open. It's about two years old.",
+    "createdAt": "2026-09-22T10:10:00Z",
+    "reporter": { "name": "Pablo Ledesma", "department": "Engineering" }
+  },
+  {
+    "id": "1041",
+    "title": "Access to SAP FI module for new analyst",
+    "body": "Please give our new analyst Lara Ojeda display access to the SAP FI module (transaction FBL1N). Manager approval attached.",
+    "createdAt": "2026-09-23T14:22:00Z",
+    "reporter": { "name": "Valeria Castro", "department": "Finance" }
+  },
+  {
+    "id": "1042",
+    "title": "Finance printer printing streaks",
+    "body": "The Finance printer PRN-2F-02 on the 2nd floor prints grey vertical streaks on every page since Monday. We replaced the toner cartridge and it still happens. It affects everyone in Finance who prints there.",
+    "createdAt": "2026-09-24T09:31:00Z",
+    "reporter": { "name": "Beatriz Lagos", "department": "Finance" }
+  },
+  {
+    "id": "1043",
+    "title": "Slow Wi-Fi in meeting room C",
+    "body": "Video calls in meeting room C freeze every few minutes. Speed test shows 3 Mbps there vs 200 Mbps at my desk.",
+    "createdAt": "2026-09-25T16:05:00Z",
+    "reporter": { "name": "Ana Villalba", "department": "Sales" }
+  },
+  {
+    "id": "1044",
+    "title": "Teams doesn't detect external webcam",
+    "body": "Teams shows \"No camera available\" with my Logitech C920 plugged in. The Windows Camera app sees it fine.",
+    "createdAt": "2026-09-26T11:40:00Z",
+    "reporter": { "name": "Marcos Díaz", "department": "Legal" }
+  },
+  {
+    "id": "1045",
+    "title": "Scan to email not working on Finance printer",
+    "body": "Scan to email on the Finance printer PRN-2F-02 (2nd floor) fails with \"SMTP connection error\". Printing from the printer works fine, only scanning to email is broken. We need it to send signed invoices.",
+    "createdAt": "2026-09-29T13:18:00Z",
+    "reporter": { "name": "Rocío Navarro", "department": "Finance" }
+  },
+  {
+    "id": "1046",
+    "title": "Adobe Acrobat Pro license request",
+    "body": "I need an Adobe Acrobat Pro license to edit and sign PDF contracts. Currently I only have Reader.",
+    "createdAt": "2026-09-30T08:50:00Z",
+    "reporter": { "name": "Diego Herrera", "department": "Legal" }
+  },
+  {
+    "id": "1047",
+    "title": "Suspicious email asking to verify payroll details",
+    "body": "I received an email from \"payroll-update@examp1e-hr.com\" asking me to log in and verify my bank details. I didn't click the link. Forwarding as attachment.",
+    "createdAt": "2026-10-01T09:12:00Z",
+    "reporter": { "name": "Sofía Méndez", "department": "HR" }
+  }
+]

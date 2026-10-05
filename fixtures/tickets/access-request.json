@@ -1,0 +1,10 @@
+{
+  "id": "3002",
+  "title": "Need access to the Finance shared drive",
+  "body": "Hello, I started this week in Accounts Receivable and I need read access to the Finance shared drive (\\\\fs01\\finance\\Invoices) to look up customer invoices. When I click the mapped drive F: I get \"You don't have permission to access this folder\".\n\nI can work on other things in the meantime but most of my onboarding tasks need this folder.",
+  "createdAt": "2026-10-05T09:40:00Z",
+  "reporter": { "name": "Ignacio Romero", "email": "iromero@example.com", "department": "Accounts Receivable" },
+  "comments": [
+    { "author": "Valeria Castro", "body": "I'm Ignacio's manager, approved for read access to Invoices.", "createdAt": "2026-10-05T10:02:00Z" }
+  ]
+}

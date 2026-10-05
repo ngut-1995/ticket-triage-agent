@@ -13,7 +13,9 @@ Triages ONE support ticket into a reviewable `TriageResult`. `SPEC.md` is the so
 - Types are inferred from the zod schemas in `src/domain/schemas.ts`. Change the schema, not a hand-written type.
 - If you change the taxonomy, update code, prompt definitions and tests together.
 
-## Data
-- `data/tickets/*.json`: 10 real-shaped tickets. File name = `<id>-<slug>.json`. Each must pass `TicketSchema` (`test/data-tickets.test.ts`).
-- `data/labels.json`: hand-labeled expectations per ticket. `corpusIds` = tickets open at that ticket's `createdAt`.
+## Fixtures (SPEC §8)
+- `fixtures/tickets/*.json`: one Ticket per file. Each must pass `TicketSchema` with no `raw` (`test/fixtures.test.ts`). Numbered files are `<id>-<slug>.json`; the rest use the §8 names.
+- `fixtures/corpus/open-tickets.json`: corpus for duplicate detection. `1042` is the printer original, `1045` is the decoy, `1043` backs the precedence case.
+- `fixtures/invalid/*.json`: inputs that must fail validation.
+- `eval/cases.json`: hand-labeled expectations, one entry per case. `corpus` is a corpus file path; `corpusIds` are tickets from `fixtures/tickets/` open at that ticket's `createdAt`.
 - ESM + NodeNext: relative imports use the `.js` extension.

@@ -1,0 +1,7 @@
+{
+  "id": "3006",
+  "title": "VPN down and new monitor",
+  "body": "The VPN is down for me since this morning. FortiClient shows \"Unable to establish the VPN connection (-14)\" right after I enter my credentials, so I can't reach the ERP or any file share from home. I've restarted the laptop and my router.\n\nAlso, unrelated, I need a new monitor: the one at my office desk has a flickering green line on the left side.",
+  "createdAt": "2026-10-05T08:55:00Z",
+  "reporter": { "name": "Hernán Quiroga", "email": "hquiroga@example.com", "department": "Procurement" }
+}
