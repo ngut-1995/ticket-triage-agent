@@ -52,9 +52,9 @@ export async function triageTicket(input: unknown, deps: TriageDeps): Promise<Tr
   const candidateIds = candidates.map((c) => c.id);
 
   const evaluate = (response: StructuredResponse): Attempt => {
-    const llm = LlmTriageOutputSchema.safeParse(response.output);
-    if (!llm.success) return { ok: false, issues: llm.error.issues };
-    const result = toResult(llm.data, ticket, candidateIds.length > 0, response.model);
+    const output = LlmTriageOutputSchema.safeParse(response.output);
+    if (!output.success) return { ok: false, issues: output.error.issues };
+    const result = toResult(output.data, ticket, candidateIds.length > 0, response.model);
     return { ok: true, result, warnings: validateResult(result, ticket, candidateIds) };
   };
   const finish = (result: TriageResult, warnings: QualityWarning[], repairAttempted: boolean): TriageResult => ({
@@ -85,25 +85,25 @@ export async function triageTicket(input: unknown, deps: TriageDeps): Promise<Tr
 // SPEC §6.2 step 5: the fields computed in code (never trusted from the LLM). Everything else, including a null
 // suggestedTeam or a stray notActionableReason, passes through so validateResult reports DISPOSITION_MISMATCH and
 // the repair call can fix it. The one exception: not_actionable always gets suggestedTeam null (SPEC §3.3).
-function toResult(llm: LlmTriageOutput, ticket: Ticket, candidatesSent: boolean, model: string): TriageResult {
-  const notActionable = llm.disposition === "not_actionable";
-  const { impact, urgency } = llm.priority;
-  const team = llm.suggestedTeam;
+function toResult(output: LlmTriageOutput, ticket: Ticket, candidatesSent: boolean, model: string): TriageResult {
+  const notActionable = output.disposition === "not_actionable";
+  const { impact, urgency } = output.priority;
+  const team = output.suggestedTeam;
   return {
-    ...llm,
+    ...output,
     ticketId: ticket.id,
     reviewStatus: "pending_review",
     priority: {
-      ...llm.priority,
+      ...output.priority,
       value: !notActionable && impact && urgency ? derivePriority(impact, urgency) : null,
       ...(ticket.reporterPriority === undefined ? {} : { reporterPriority: ticket.reporterPriority }),
     },
     suggestedTeam:
       notActionable || team === null
         ? null
-        : { ...team, overridesDefault: team.team !== DEFAULT_TEAM[llm.category.primary] },
+        : { ...team, overridesDefault: team.team !== DEFAULT_TEAM[output.category.primary] },
     // SPEC §4.3 step 4: with no candidates sent there is no duplicate reasoning.
-    possibleDuplicates: candidatesSent ? llm.possibleDuplicates : [],
+    possibleDuplicates: candidatesSent ? output.possibleDuplicates : [],
     qualityWarnings: [],
     meta: { model, promptVersion: PROMPT_VERSION, repairAttempted: false, durationMs: 0 },
   };
