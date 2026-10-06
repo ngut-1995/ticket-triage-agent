@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { errorMessage, formatZodIssues, TicketValidationError } from "./domain/errors.js";
 import { parseTicket, TicketSchema, type Ticket, type TriageResult } from "./domain/schemas.js";
-import { ClaudeClient, DEFAULT_MODEL } from "./llm/claude.js";
+import { ClaudeClient, resolveModel } from "./llm/claude.js";
 import { LLMError, type LLMClient } from "./llm/client.js";
 import { TriageOutputError, triageTicket } from "./triage.js";
 
@@ -78,7 +78,7 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
     return fail(EXIT_INVALID_INPUT, errorMessage(error));
   }
 
-  const model = args.model ?? io.env.TRIAGE_MODEL ?? DEFAULT_MODEL;
+  const model = resolveModel(args.model, io.env);
   const apiKey = io.env.ANTHROPIC_API_KEY ?? "";
   const llm =
     typeof io.llm === "function"

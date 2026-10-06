@@ -2,6 +2,7 @@
 // check it against the hand labels, print a scorecard, and exit non-zero if any case fails.
 // Needs ANTHROPIC_API_KEY. Not run in CI.
 import { readdirSync, readFileSync } from "node:fs";
+import { errorMessage } from "../src/domain/errors.js";
 import { TicketSchema, type Ticket } from "../src/domain/schemas.js";
 import { ClaudeClient } from "../src/llm/claude.js";
 import { triageTicket } from "../src/triage.js";
@@ -38,7 +39,7 @@ async function main(): Promise<number> {
       const result = await triageTicket(readJson(c.fixture), corpus ? { llm, corpus } : { llm });
       outcomes = checkCase(result, c.expect);
     } catch (error) {
-      outcomes = [{ check: "triage", pass: false, detail: error instanceof Error ? error.message : String(error) }];
+      outcomes = [{ check: "triage", pass: false, detail: errorMessage(error) }];
     }
     const failures = outcomes.filter((o) => !o.pass);
     if (failures.length > 0) failedCases++;
