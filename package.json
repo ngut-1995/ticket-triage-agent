@@ -7,11 +7,16 @@
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "triage": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').cpSync('src/prompt/system.md', 'dist/prompt/system.md')\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "triage": "tsx src/cli.ts",
+    "eval": "tsx eval/run.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
