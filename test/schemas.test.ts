@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LlmTriageOutputSchema, TicketSchema, TriageResultSchema } from "../src/domain/schemas.js";
-import { notActionableLlmOutput, validLlmOutput, validTriageResult } from "./support/builders.js";
+import { notActionableLlmOutput, readJson, validLlmOutput, validTriageResult } from "./support/builders.js";
 
 // Returns a deep copy of `base` after applying `mutate` to it, typed loosely so tests can break the shape.
 const edit = <T>(base: T, mutate: (draft: any) => void): unknown => {
@@ -41,6 +41,36 @@ describe("TicketSchema", () => {
     ["comment without author", { comments: [{ body: "x", createdAt: "2026-10-05T10:00:00Z" }] }],
   ])("rejects a ticket with %s", (_label, override) => {
     expect(TicketSchema.safeParse({ ...minimalTicket, ...override }).success).toBe(false);
+  });
+
+  describe("createdAt is ISO-8601 (SPEC §3.1)", () => {
+    const valid = [
+      "2024-03-01",
+      "2024-03-01T10:00:00Z",
+      "2024-03-01T10:00:00.123Z",
+      "2024-03-01T10:00:00-03:00",
+      "2024-03-01T10:00:00",
+      "2024-03-01T10:00",
+    ];
+    const invalid = ["yesterday afternoon", "03/01/2024", "2024-13-01", "2024-03-01 10:00", ""];
+
+    it.each(valid)("accepts %s on the ticket and on comments", (createdAt) => {
+      const ticket = { ...minimalTicket, createdAt, comments: [{ author: "Ana", body: "x", createdAt }] };
+      expect(TicketSchema.safeParse(ticket).success).toBe(true);
+    });
+
+    it.each(invalid)("rejects %j on the ticket", (createdAt) => {
+      expect(TicketSchema.safeParse({ ...minimalTicket, createdAt }).success).toBe(false);
+    });
+
+    it.each(invalid)("rejects %j on a comment", (createdAt) => {
+      const ticket = { ...minimalTicket, comments: [{ author: "Ana", body: "x", createdAt }] };
+      expect(TicketSchema.safeParse(ticket).success).toBe(false);
+    });
+
+    it("rejects fixtures/invalid/bad-created-at.json", () => {
+      expect(TicketSchema.safeParse(readJson("fixtures/invalid/bad-created-at.json")).success).toBe(false);
+    });
   });
 
   it("moves unknown top-level fields into raw", () => {

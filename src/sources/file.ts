@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { formatZodIssues, TicketValidationError } from "../domain/errors.js";
 import { type Ticket, TicketSchema } from "../domain/schemas.js";
 import type { TicketSource } from "./ticket-source.js";
 
@@ -33,7 +34,8 @@ export class FileTicketSource implements TicketSource {
       if (!isObject(data) || String(data.id) !== id) continue;
       const result = TicketSchema.safeParse(data);
       if (!result.success) {
-        throw new Error(`Ticket ${id} in ${path} is invalid: ${result.error.message}`);
+        const { issues } = result.error;
+        throw new TicketValidationError(issues, `Invalid ticket ${id} in ${path}: ${formatZodIssues(issues)}`);
       }
       return result.data;
     }

@@ -98,8 +98,8 @@ every requirement ID; if `requirements` is empty, any question with a non-empty 
 - At most 5, most important first. Each `question` is addressed to the reporter in plain language; `why` says what
   is unknown and why it matters.
 - Never ask for anything the title, body or comments already answer.
-- Every question names what it `unblocks`: requirement IDs (such as "R2") and/or the fields "category", "priority"
-  or "duplicate". `unblocks` is never empty and only references requirement IDs that exist.
+- Every question names what it `unblocks`: requirement IDs (such as "R2") and/or the fields {{UNBLOCK_FIELDS}}.
+  `unblocks` is never empty and only references requirement IDs that exist.
 
 # Good requirements
 

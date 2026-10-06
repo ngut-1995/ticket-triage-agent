@@ -1,35 +1,40 @@
 // SPEC §5 quality validator. Pure and deterministic: it reports problems and never mutates its inputs.
 import type { QualityRuleCode, QualityWarning, Requirement, Ticket, TriageResult } from "../domain/schemas.js";
+import { UNBLOCK_FIELDS, VAGUE_TERMS } from "../domain/taxonomy.js";
 
-// SPEC §4.5 rule 4. Matched case-insensitively as whole words / phrases.
-export const VAGUE_TERMS = [
-  "fast",
-  "quickly",
-  "easy",
-  "user-friendly",
-  "intuitive",
-  "ASAP",
-  "properly",
-  "correctly",
-  "as expected",
-  "better",
-  "improve",
-  "optimize",
-  "etc.",
-  "and/or",
-] as const;
+// SPEC §6 lists VAGUE_TERMS here; it is defined with the rest of the taxonomy.
+export { VAGUE_TERMS };
 
 const MAX_SUMMARY_CHARS = 280;
 const MAX_QUESTIONS = 5;
-// Non-requirement targets a question may unblock (SPEC §3.4 MissingInfoQuestion.unblocks).
-const UNBLOCK_FIELDS = new Set(["category", "priority", "duplicate"]);
+const UNBLOCK_FIELD_SET: ReadonlySet<string> = new Set(UNBLOCK_FIELDS);
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
 // Boundaries treat letters, digits, "_" and "-" as word characters, so "fast" does not match "breakfast" and
 // "user-friendly" is one term.
 const VAGUE_PATTERNS = VAGUE_TERMS.map(
-  (term) => [term, new RegExp(`(?<![\\w-])${escapeRegExp(term)}(?![\\w-])`, "i")] as const,
+  (term) => [term, new RegExp(`(?<![\\w-])${escapeRegExp(term)}(?![\\w-])`, "gi")] as const,
 );
+// SPEC §4.5 rule 4: a term is fine when its clause carries a measurable qualifier (a number). A clause runs to the
+// nearest ".", ";", "," or newline on either side. "etc." and "and/or" have no exemption.
+const NO_QUALIFIER_EXEMPTION: ReadonlySet<string> = new Set(["etc.", "and/or"]);
+const CLAUSE_BREAK = /[.;,\n]/;
+const HAS_NUMBER = /\d/;
+
+const clauseAround = (text: string, start: number, end: number): string => {
+  let from = start;
+  while (from > 0 && !CLAUSE_BREAK.test(text[from - 1]!)) from--;
+  let to = end;
+  while (to < text.length && !CLAUSE_BREAK.test(text[to]!)) to++;
+  return text.slice(from, to);
+};
+
+/** True when `text` uses `term` at least once without a measurable qualifier in the same clause. */
+const usesVagueTerm = (text: string, term: string, pattern: RegExp): boolean =>
+  [...text.matchAll(pattern)].some(
+    (m) =>
+      NO_QUALIFIER_EXEMPTION.has(term) || !HAS_NUMBER.test(clauseAround(text, m.index, m.index + m[0].length)),
+  );
 
 const normalize = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
@@ -81,7 +86,7 @@ export function validateResult(result: TriageResult, ticket: Ticket, candidateId
     ] as const;
     for (const [where, text] of texts) {
       for (const [term, pattern] of VAGUE_PATTERNS) {
-        if (pattern.test(text)) {
+        if (usesVagueTerm(text, term, pattern)) {
           warn("VAGUE_TERM", `Requirement ${req.id} ${where} uses the vague term "${term}".`, req.id);
         }
       }
@@ -100,7 +105,7 @@ export function validateResult(result: TriageResult, ticket: Ticket, candidateId
       warn("UNBLOCKS_NOTHING", `missingInfo[${i}] ("${q.question}") has an empty unblocks.`);
     }
     for (const target of q.unblocks) {
-      if (!UNBLOCK_FIELDS.has(target) && !requirementIds.has(target)) {
+      if (!UNBLOCK_FIELD_SET.has(target) && !requirementIds.has(target)) {
         warn("DANGLING_UNBLOCKS", `missingInfo[${i}] unblocks "${target}", which is not a requirement ID.`, target);
       }
     }

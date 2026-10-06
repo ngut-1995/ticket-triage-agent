@@ -1,9 +1,9 @@
 // SPEC §6.2. Orchestrates one triage: validate input, prompt, parse, derive, validate, repair once.
-import type { z } from "zod";
+import { formatZodIssue, formatZodIssues, TicketValidationError, type ZodIssue } from "./domain/errors.js";
 import { derivePriority } from "./domain/priority.js";
 import {
   LlmTriageOutputSchema,
-  TicketSchema,
+  parseTicket,
   type LlmTriageOutput,
   type QualityWarning,
   type Ticket,
@@ -22,21 +22,7 @@ export interface TriageDeps {
   now?: () => number;
 }
 
-type ZodIssue = z.core.$ZodIssue;
-
-const formatPath = (issue: ZodIssue) => (issue.path.length > 0 ? issue.path.join(".") : "(root)");
-const formatIssues = (issues: ZodIssue[]): string => issues.map((i) => `${formatPath(i)}: ${i.message}`).join("; ");
-
-/** The input is not a valid Ticket (SPEC §3.1). Thrown before any LLM call. */
-export class TicketValidationError extends Error {
-  readonly issues: ZodIssue[];
-
-  constructor(issues: ZodIssue[]) {
-    super(`Invalid ticket: ${formatIssues(issues)}`);
-    this.name = "TicketValidationError";
-    this.issues = issues;
-  }
-}
+export { TicketValidationError };
 
 /** The LLM output still does not match LlmTriageOutputSchema after the repair call (SPEC §5). */
 export class TriageOutputError extends Error {
@@ -45,7 +31,7 @@ export class TriageOutputError extends Error {
   readonly output: unknown;
 
   constructor(issues: ZodIssue[], output: unknown) {
-    super(`LLM output does not match the triage schema after repair: ${formatIssues(issues)}`);
+    super(`LLM output does not match the triage schema after repair: ${formatZodIssues(issues)}`);
     this.name = "TriageOutputError";
     this.issues = issues;
     this.output = output;
@@ -60,17 +46,15 @@ export async function triageTicket(input: unknown, deps: TriageDeps): Promise<Tr
   const now = deps.now ?? Date.now;
   const start = now();
 
-  const parsed = TicketSchema.safeParse(input);
-  if (!parsed.success) throw new TicketValidationError(parsed.error.issues);
-  const ticket = parsed.data;
+  const ticket = parseTicket(input);
 
   const candidates = deps.corpus ? prefilterCandidates(ticket, deps.corpus).map((c) => c.ticket) : [];
   const candidateIds = candidates.map((c) => c.id);
 
   const evaluate = (response: StructuredResponse): Attempt => {
-    const llm = LlmTriageOutputSchema.safeParse(response.output);
-    if (!llm.success) return { ok: false, issues: llm.error.issues };
-    const result = toResult(llm.data, ticket, candidateIds.length > 0, response.model);
+    const output = LlmTriageOutputSchema.safeParse(response.output);
+    if (!output.success) return { ok: false, issues: output.error.issues };
+    const result = toResult(output.data, ticket, candidateIds.length > 0, response.model);
     return { ok: true, result, warnings: validateResult(result, ticket, candidateIds) };
   };
   const finish = (result: TriageResult, warnings: QualityWarning[], repairAttempted: boolean): TriageResult => ({
@@ -87,7 +71,7 @@ export async function triageTicket(input: unknown, deps: TriageDeps): Promise<Tr
   // SPEC §5: exactly one repair call, with quality warnings or zod issues as the problems to fix.
   const problems: RepairIssue[] = first.ok
     ? first.warnings
-    : first.issues.map((i) => ({ code: "SCHEMA_INVALID", message: `${formatPath(i)}: ${i.message}` }));
+    : first.issues.map((i) => ({ code: "SCHEMA_INVALID", message: formatZodIssue(i) }));
   const repairResponse = await deps.llm.generateStructured(
     buildRepairPrompt(request, firstResponse.output, problems),
   );
@@ -98,30 +82,28 @@ export async function triageTicket(input: unknown, deps: TriageDeps): Promise<Tr
   throw new TriageOutputError(repaired.issues, repairResponse.output);
 }
 
-// SPEC §6.2 step 5 and the §3.3/§4.1 invariants computed in code (never trusted from the LLM):
-// priority.value and suggestedTeam are null iff not_actionable, and notActionableReason exists only then.
-function toResult(llm: LlmTriageOutput, ticket: Ticket, candidatesSent: boolean, model: string): TriageResult {
-  const { notActionableReason, ...rest } = llm;
-  const notActionable = llm.disposition === "not_actionable";
-  const { impact, urgency } = llm.priority;
-  const defaultTeam = DEFAULT_TEAM[llm.category.primary];
-  const team = llm.suggestedTeam ?? {
-    team: defaultTeam,
-    rationale: `Default team for category ${llm.category.primary} (no team was suggested).`,
-  };
+// SPEC §6.2 step 5: the fields computed in code (never trusted from the LLM). Everything else, including a null
+// suggestedTeam or a stray notActionableReason, passes through so validateResult reports DISPOSITION_MISMATCH and
+// the repair call can fix it. The one exception: not_actionable always gets suggestedTeam null (SPEC §3.3).
+function toResult(output: LlmTriageOutput, ticket: Ticket, candidatesSent: boolean, model: string): TriageResult {
+  const notActionable = output.disposition === "not_actionable";
+  const { impact, urgency } = output.priority;
+  const team = output.suggestedTeam;
   return {
-    ...rest,
-    ...(notActionable && notActionableReason !== undefined ? { notActionableReason } : {}),
+    ...output,
     ticketId: ticket.id,
     reviewStatus: "pending_review",
     priority: {
-      ...llm.priority,
+      ...output.priority,
       value: !notActionable && impact && urgency ? derivePriority(impact, urgency) : null,
       ...(ticket.reporterPriority === undefined ? {} : { reporterPriority: ticket.reporterPriority }),
     },
-    suggestedTeam: notActionable ? null : { ...team, overridesDefault: team.team !== defaultTeam },
+    suggestedTeam:
+      notActionable || team === null
+        ? null
+        : { ...team, overridesDefault: team.team !== DEFAULT_TEAM[output.category.primary] },
     // SPEC §4.3 step 4: with no candidates sent there is no duplicate reasoning.
-    possibleDuplicates: candidatesSent ? llm.possibleDuplicates : [],
+    possibleDuplicates: candidatesSent ? output.possibleDuplicates : [],
     qualityWarnings: [],
     meta: { model, promptVersion: PROMPT_VERSION, repairAttempted: false, durationMs: 0 },
   };

@@ -104,3 +104,25 @@ export const NOT_ACTIONABLE_REASON_DEFINITIONS: Record<NotActionableReason, stri
   empty: "Empty or near-empty ticket with no recoverable intent.",
   other: "Not actionable for another reason, explained in reviewerNotes.",
 };
+
+// SPEC §3.4 MissingInfoQuestion.unblocks: the non-requirement targets a question may unblock.
+export const UNBLOCK_FIELDS = ["category", "priority", "duplicate"] as const;
+export type UnblockField = (typeof UNBLOCK_FIELDS)[number];
+
+// SPEC §4.5 rule 4. Matched case-insensitively as whole words / phrases.
+export const VAGUE_TERMS = [
+  "fast",
+  "quickly",
+  "easy",
+  "user-friendly",
+  "intuitive",
+  "ASAP",
+  "properly",
+  "correctly",
+  "as expected",
+  "better",
+  "improve",
+  "optimize",
+  "etc.",
+  "and/or",
+] as const;

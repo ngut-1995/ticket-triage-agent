@@ -2,7 +2,7 @@
 // user turn inside <ticket> / <candidate_tickets> tags, and `raw` never reaches the prompt.
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { LlmTriageOutputSchema, type Ticket } from "../domain/schemas.js";
+import { LlmTriageOutputSchema, type QualityRuleCode, type QualityWarning, type Ticket } from "../domain/schemas.js";
 import {
   CATEGORY_DEFINITIONS,
   CONFIDENCE_DEFINITIONS,
@@ -11,17 +11,18 @@ import {
   IMPACT_DEFINITIONS,
   NOT_ACTIONABLE_REASON_DEFINITIONS,
   TEAM_DEFINITIONS,
+  UNBLOCK_FIELDS,
   URGENCY_DEFINITIONS,
+  VAGUE_TERMS,
 } from "../domain/taxonomy.js";
 import type { StructuredRequest } from "../llm/client.js";
-import { VAGUE_TERMS } from "../quality/validate.js";
 
 /** Bump whenever system.md or the request shape changes. Reported in `meta.promptVersion`. */
 export const PROMPT_VERSION = "triage-v1";
 
 const MAX_TOKENS = 8192;
 /** SPEC §4.3: candidates carry id, title and only the first 500 chars of the body. */
-export const CANDIDATE_BODY_CHARS = 500;
+const CANDIDATE_BODY_CHARS = 500;
 
 // `$schema` is stripped: the Messages API structured-output format does not need it and may reject it.
 const { $schema: _schema, ...LLM_OUTPUT_JSON_SCHEMA } = z.toJSONSchema(LlmTriageOutputSchema) as Record<
@@ -34,6 +35,11 @@ const definitionList = (record: Record<string, string>) =>
     .map(([value, definition]) => `- \`${value}\`: ${definition}`)
     .join("\n");
 
+const quoted = (values: readonly string[]) => values.map((v) => `"${v}"`);
+// ["a", "b", "c"] → "a", "b" or "c"
+const orList = (values: readonly string[]) =>
+  values.length <= 1 ? values.join("") : `${values.slice(0, -1).join(", ")} or ${values.at(-1)}`;
+
 const PLACEHOLDERS: Record<string, string> = {
   CATEGORY_DEFINITIONS: definitionList(CATEGORY_DEFINITIONS),
   TEAM_DEFINITIONS: definitionList(TEAM_DEFINITIONS),
@@ -45,7 +51,8 @@ const PLACEHOLDERS: Record<string, string> = {
   CONFIDENCE_DEFINITIONS: definitionList(CONFIDENCE_DEFINITIONS),
   DISPOSITION_DEFINITIONS: definitionList(DISPOSITION_DEFINITIONS),
   NOT_ACTIONABLE_REASON_DEFINITIONS: definitionList(NOT_ACTIONABLE_REASON_DEFINITIONS),
-  VAGUE_TERMS: VAGUE_TERMS.map((t) => `"${t}"`).join(", "),
+  VAGUE_TERMS: quoted(VAGUE_TERMS).join(", "),
+  UNBLOCK_FIELDS: orList(quoted(UNBLOCK_FIELDS)),
 };
 
 // system.md sits next to this module in src/ (tsx, vitest) and is copied next to it in dist/ by `npm run build`.
@@ -104,11 +111,7 @@ export function buildTriagePrompt(ticket: Ticket, candidates: Ticket[] = []): St
 }
 
 /** A problem to fix in the repair call: a QualityWarning, or a schema issue from the zod parse. */
-export interface RepairIssue {
-  code: string;
-  message: string;
-  requirementId?: string;
-}
+export type RepairIssue = Omit<QualityWarning, "code"> & { code: QualityRuleCode | "SCHEMA_INVALID" };
 
 /**
  * SPEC §5 repair call: the original prompt, the previous output (as the assistant turn) and every warning.

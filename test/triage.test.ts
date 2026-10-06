@@ -145,6 +145,7 @@ describe("triageTicket", () => {
       for (const [category, team] of Object.entries(taxonomy.DEFAULT_TEAM)) {
         expect(req.system).toContain(`\`${category}\` → \`${team}\``);
       }
+      for (const field of taxonomy.UNBLOCK_FIELDS) expect(req.system).toContain(`"${field}"`);
     });
 
     it("the system prompt states the §4.5 rules, including every vague term", async () => {
@@ -325,13 +326,16 @@ describe("triageTicket", () => {
       expect(llm.calls).toHaveLength(1);
     });
 
-    it("other dispositions: a missing suggestedTeam falls back to DEFAULT_TEAM for the category", async () => {
-      const llm = new FakeClient([{ ...validLlmOutput(), suggestedTeam: null }]);
+    it("other dispositions: a null suggestedTeam is kept, so the repair sees DISPOSITION_MISMATCH", async () => {
+      const llm = new FakeClient([
+        { ...validLlmOutput(), suggestedTeam: null },
+        { ...validLlmOutput(), suggestedTeam: null },
+      ]);
       const result = await triageTicket(bugClearTicket(), { llm });
-      // software_bug → apps (SPEC §3.2)
-      expect(result.suggestedTeam).toMatchObject({ team: "apps", overridesDefault: false });
-      expect(result.priority.value).not.toBeNull();
-      expect(result.qualityWarnings).toEqual([]);
+      expect(llm.calls).toHaveLength(2);
+      expect(llm.calls[1]?.messages[2]?.content).toContain("DISPOSITION_MISMATCH");
+      expect(result.suggestedTeam).toBeNull();
+      expect(result.qualityWarnings.map((w) => w.code)).toContain("DISPOSITION_MISMATCH");
     });
 
     it("overridesDefault is true when the team differs from DEFAULT_TEAM[category.primary]", async () => {
@@ -342,9 +346,12 @@ describe("triageTicket", () => {
       expect(result.suggestedTeam).toEqual({ team: "service_desk", rationale: "Known workaround.", overridesDefault: true });
     });
 
-    it("notActionableReason is dropped when the disposition is not not_actionable", async () => {
-      const llm = new FakeClient([{ ...validLlmOutput(), notActionableReason: "spam" }]);
+    it("notActionableReason on another disposition is kept, so the repair sees DISPOSITION_MISMATCH", async () => {
+      const llm = new FakeClient([{ ...validLlmOutput(), notActionableReason: "spam" }, validLlmOutput()]);
       const result = await triageTicket(bugClearTicket(), { llm });
+      expect(llm.calls).toHaveLength(2);
+      expect(llm.calls[1]?.messages[2]?.content).toContain("DISPOSITION_MISMATCH");
+      expect(llm.calls[1]?.messages[2]?.content).toContain("notActionableReason");
       expect(result).not.toHaveProperty("notActionableReason");
       expect(result.qualityWarnings).toEqual([]);
     });

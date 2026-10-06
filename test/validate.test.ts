@@ -170,6 +170,48 @@ describe("VAGUE_TERM", () => {
     expect(withCode(r, "VAGUE_TERM")).toHaveLength(1);
   });
 
+  describe("measurable qualifier in the same clause (SPEC §4.5 rule 4)", () => {
+    const vague = (statement: string, then = "the file opens in Excel") =>
+      withCode(
+        edit(validTriageResult(), (d) => {
+          d.requirements[0]!.statement = statement;
+          d.requirements[0]!.acceptanceCriteria[0]!.then = then;
+        }),
+        "VAGUE_TERM",
+      );
+
+    it.each([
+      "The dashboard loads quickly (< 2 s) on the office network.",
+      "Export is fast at under 500 ms per file, and the tab does not crash.",
+    ])("passes when the clause has a number: %s", (statement) => {
+      expect(vague(statement)).toEqual([]);
+    });
+
+    it("passes for a qualified term in then", () => {
+      expect(vague("Exporting produces an .xlsx file.", "the file downloads quickly (within 5 seconds)")).toEqual([]);
+    });
+
+    it("fails when the term has no qualifier", () => {
+      expect(vague("The dashboard loads quickly on the office network.")).toHaveLength(1);
+    });
+
+    it.each([
+      "The dashboard loads quickly. It must take under 2 s.",
+      "The dashboard loads quickly; target 2 s.",
+      "Under 2 s, the dashboard loads quickly, as before",
+      "The dashboard loads quickly\nwithin 2 s",
+    ])("fails when the qualifier is in a different clause: %s", (statement) => {
+      expect(vague(statement)).toHaveLength(1);
+    });
+
+    it.each(["Supports Excel, CSV etc. within 2 s", "Exports 2 files and/or 3 reports"])(
+      "etc. and and/or have no qualifier exemption: %s",
+      (statement) => {
+        expect(vague(statement)).toHaveLength(1);
+      },
+    );
+  });
+
   it("ignores banned terms in given/when (only statement and then are checked)", () => {
     const r = edit(validTriageResult(), (d) => {
       d.requirements[0]!.acceptanceCriteria[0]!.given = "a fast network";
