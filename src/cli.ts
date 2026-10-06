@@ -3,10 +3,11 @@
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { TicketSchema, type Ticket, type TriageResult } from "./domain/schemas.js";
+import { errorMessage, formatZodIssues, TicketValidationError } from "./domain/errors.js";
+import { parseTicket, TicketSchema, type Ticket, type TriageResult } from "./domain/schemas.js";
 import { ClaudeClient, DEFAULT_MODEL } from "./llm/claude.js";
 import { LLMError, type LLMClient } from "./llm/client.js";
-import { TicketValidationError, TriageOutputError, triageTicket } from "./triage.js";
+import { TriageOutputError, triageTicket } from "./triage.js";
 
 export const EXIT_OK = 0;
 export const EXIT_UNEXPECTED = 1;
@@ -26,7 +27,7 @@ export interface CliIO {
   env: Record<string, string | undefined>;
 }
 
-class InputError extends Error {}
+class UsageError extends Error {}
 
 /** Runs the CLI and returns its exit code. Never calls process.exit, so it is testable in-process. */
 export async function runCli(argv: string[], io: CliIO): Promise<number> {
@@ -52,22 +53,25 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
       io.stdout.write(`${USAGE}\n`);
       return EXIT_OK;
     }
-    if (positionals.length !== 1) throw new InputError("expected exactly one ticket file");
+    if (positionals.length !== 1) throw new UsageError("expected exactly one ticket file");
     args = { file: positionals[0]!, corpus: values.corpus, out: values.out, model: values.model };
   } catch (error) {
     return fail(EXIT_INVALID_INPUT, `${errorMessage(error)}\n${USAGE}`);
   }
 
   // Everything below the LLM call is validated first, so bad input never reaches (or authenticates with) the API.
+  // Every input problem is a TicketValidationError (AC-2).
   let input: unknown;
   let corpus: Ticket[] | undefined;
   try {
     input = await readJson(args.file, "ticket");
-    const ticket = TicketSchema.safeParse(input);
-    if (!ticket.success) throw new TicketValidationError(ticket.error.issues);
+    parseTicket(input);
     if (args.corpus !== undefined) {
       const parsed = TicketSchema.array().safeParse(await readJson(args.corpus, "corpus"));
-      if (!parsed.success) throw new InputError(`invalid corpus ${args.corpus}: ${parsed.error.message}`);
+      if (!parsed.success) {
+        const { issues } = parsed.error;
+        throw new TicketValidationError(issues, `Invalid corpus ${args.corpus}: ${formatZodIssues(issues)}`);
+      }
       corpus = parsed.data;
     }
   } catch (error) {
@@ -110,12 +114,12 @@ async function readJson(path: string, what: string): Promise<unknown> {
   try {
     text = await readFile(path, "utf8");
   } catch (error) {
-    throw new InputError(`cannot read ${what} file ${path}: ${errorMessage(error)}`);
+    throw TicketValidationError.fromProblem(`cannot read ${what} file ${path}: ${errorMessage(error)}`);
   }
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new InputError(`${what} file ${path} is not valid JSON: ${errorMessage(error)}`);
+    throw TicketValidationError.fromProblem(`${what} file ${path} is not valid JSON: ${errorMessage(error)}`);
   }
 }
 
@@ -142,8 +146,6 @@ export function summarize(r: TriageResult): string {
   ];
   return `${lines.join("\n")}\n`;
 }
-
-const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 async function isMain(): Promise<boolean> {
   const entry = process.argv[1];

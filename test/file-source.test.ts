@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { FileTicketSource } from "../src/sources/file.js";
 import type { TicketSource } from "../src/sources/ticket-source.js";
+import { TicketValidationError } from "../src/triage.js";
 
 const path = (p: string) => fileURLToPath(new URL(`../${p}`, import.meta.url));
 const ticketsDir = path("fixtures/tickets");
@@ -30,13 +31,18 @@ describe("FileTicketSource.getTicket", () => {
 
   it("throws for an unknown id", async () => {
     const source = new FileTicketSource({ ticketsDir });
-    await expect(source.getTicket("does-not-exist")).rejects.toThrow(/does-not-exist/);
+    const error = await source.getTicket("does-not-exist").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(TicketValidationError);
+    expect((error as Error).message).toMatch(/does-not-exist/);
   });
 
   it("throws when the matching ticket fails TicketSchema", async () => {
     const source = new FileTicketSource({ ticketsDir: path("fixtures/invalid") });
     // missing-body.json has id "9001" but no body
-    await expect(source.getTicket("9001")).rejects.toThrow(/9001/);
+    const error = await source.getTicket("9001").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(TicketValidationError);
+    expect((error as Error).message).toMatch(/9001/);
   });
 
   it("throws when the ticket directory does not exist", async () => {

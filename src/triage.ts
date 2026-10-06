@@ -1,9 +1,9 @@
 // SPEC §6.2. Orchestrates one triage: validate input, prompt, parse, derive, validate, repair once.
-import type { z } from "zod";
+import { formatZodIssue, formatZodIssues, TicketValidationError, type ZodIssue } from "./domain/errors.js";
 import { derivePriority } from "./domain/priority.js";
 import {
   LlmTriageOutputSchema,
-  TicketSchema,
+  parseTicket,
   type LlmTriageOutput,
   type QualityWarning,
   type Ticket,
@@ -22,21 +22,7 @@ export interface TriageDeps {
   now?: () => number;
 }
 
-type ZodIssue = z.core.$ZodIssue;
-
-const formatPath = (issue: ZodIssue) => (issue.path.length > 0 ? issue.path.join(".") : "(root)");
-const formatIssues = (issues: ZodIssue[]): string => issues.map((i) => `${formatPath(i)}: ${i.message}`).join("; ");
-
-/** The input is not a valid Ticket (SPEC §3.1). Thrown before any LLM call. */
-export class TicketValidationError extends Error {
-  readonly issues: ZodIssue[];
-
-  constructor(issues: ZodIssue[]) {
-    super(`Invalid ticket: ${formatIssues(issues)}`);
-    this.name = "TicketValidationError";
-    this.issues = issues;
-  }
-}
+export { TicketValidationError };
 
 /** The LLM output still does not match LlmTriageOutputSchema after the repair call (SPEC §5). */
 export class TriageOutputError extends Error {
@@ -45,7 +31,7 @@ export class TriageOutputError extends Error {
   readonly output: unknown;
 
   constructor(issues: ZodIssue[], output: unknown) {
-    super(`LLM output does not match the triage schema after repair: ${formatIssues(issues)}`);
+    super(`LLM output does not match the triage schema after repair: ${formatZodIssues(issues)}`);
     this.name = "TriageOutputError";
     this.issues = issues;
     this.output = output;
@@ -60,9 +46,7 @@ export async function triageTicket(input: unknown, deps: TriageDeps): Promise<Tr
   const now = deps.now ?? Date.now;
   const start = now();
 
-  const parsed = TicketSchema.safeParse(input);
-  if (!parsed.success) throw new TicketValidationError(parsed.error.issues);
-  const ticket = parsed.data;
+  const ticket = parseTicket(input);
 
   const candidates = deps.corpus ? prefilterCandidates(ticket, deps.corpus).map((c) => c.ticket) : [];
   const candidateIds = candidates.map((c) => c.id);
@@ -87,7 +71,7 @@ export async function triageTicket(input: unknown, deps: TriageDeps): Promise<Tr
   // SPEC §5: exactly one repair call, with quality warnings or zod issues as the problems to fix.
   const problems: RepairIssue[] = first.ok
     ? first.warnings
-    : first.issues.map((i) => ({ code: "SCHEMA_INVALID", message: `${formatPath(i)}: ${i.message}` }));
+    : first.issues.map((i) => ({ code: "SCHEMA_INVALID", message: formatZodIssue(i) }));
   const repairResponse = await deps.llm.generateStructured(
     buildRepairPrompt(request, firstResponse.output, problems),
   );

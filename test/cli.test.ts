@@ -60,6 +60,8 @@ describe("runCli: invalid input and usage (exit 2, no LLM call)", () => {
     const { code, stdout, stderr } = await run([file], { llm });
     expect(code).toBe(2);
     expect(stderr).toMatch(message);
+    // AC-2: every invalid-input case is a TicketValidationError ("Invalid ticket: ...").
+    expect(stderr).toMatch(/^triage: Invalid ticket: /);
     expect(stdout).toBe("");
     expect(llm.calls).toHaveLength(0);
   });

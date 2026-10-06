@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TicketValidationError } from "./errors.js";
 import {
   CATEGORIES,
   CONFIDENCES,
@@ -54,6 +55,13 @@ export const TicketSchema = z
     if (Object.keys(raw).length > 0) ticket.raw = raw;
     return ticket as Ticket;
   });
+
+/** Parses `input` as a Ticket (SPEC §3.1) or throws TicketValidationError. */
+export function parseTicket(input: unknown): Ticket {
+  const parsed = TicketSchema.safeParse(input);
+  if (!parsed.success) throw new TicketValidationError(parsed.error.issues);
+  return parsed.data;
+}
 
 // SPEC §3.4, §6.1. Shape only: anything the quality validator (SPEC §5) reports, such as summary length,
 // question count, empty unblocks or acceptance criteria, missing quotes or duplicate IDs, is accepted here
