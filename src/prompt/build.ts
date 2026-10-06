@@ -22,7 +22,7 @@ export const PROMPT_VERSION = "triage-v1";
 
 const MAX_TOKENS = 8192;
 /** SPEC §4.3: candidates carry id, title and only the first 500 chars of the body. */
-export const CANDIDATE_BODY_CHARS = 500;
+const CANDIDATE_BODY_CHARS = 500;
 
 // `$schema` is stripped: the Messages API structured-output format does not need it and may reject it.
 const { $schema: _schema, ...LLM_OUTPUT_JSON_SCHEMA } = z.toJSONSchema(LlmTriageOutputSchema) as Record<
