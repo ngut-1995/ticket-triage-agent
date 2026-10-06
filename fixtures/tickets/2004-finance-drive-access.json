@@ -1,0 +1,10 @@
+{
+  "id": "2004",
+  "title": "Access to Finance shared drive - Budget 2027 folder",
+  "body": "Hi, I need read/write access to \\\\fs01\\finance\\Budget2027. I joined the FP&A team this week and I can't start consolidating the Q4 forecasts until I have access. Right now I get \"Access denied\" when I open the folder.\n\nMy manager is Gabriela Ríos, she can approve.",
+  "createdAt": "2026-09-30T10:02:00Z",
+  "reporter": { "name": "Tomás Acuña", "email": "tacuna@example.com", "department": "FP&A" },
+  "comments": [
+    { "author": "Gabriela Ríos", "body": "Approved. Tomás needs the same access as the rest of FP&A on Budget2027.", "createdAt": "2026-09-30T10:31:00Z" }
+  ]
+}

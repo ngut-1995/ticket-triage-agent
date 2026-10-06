@@ -1,0 +1,8 @@
+{
+  "id": "2006",
+  "title": "computer acting weird",
+  "body": "My computer has been doing strange things since yesterday. Sometimes it works fine and sometimes it doesn't. Can someone take a look?",
+  "createdAt": "2026-10-01T08:15:00Z",
+  "reporter": { "name": "Raúl Benítez", "email": "rbenitez@example.com", "department": "Operations" },
+  "reporterPriority": "Urgent"
+}

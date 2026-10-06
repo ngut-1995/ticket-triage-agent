@@ -1,0 +1,8 @@
+{
+  "id": "3001",
+  "title": "Insight dashboard crashes when exporting a chart to Excel",
+  "body": "Every time I export a chart from the Insight sales dashboard to Excel, the browser tab shows \"Aw, Snap! Something went wrong\" and the dashboard reloads.\n\nSteps to reproduce:\n1. Open Insight > Sales > Monthly Revenue\n2. Set the date range to Jan 2026 - Sep 2026\n3. Click the chart menu (three dots) > Export > Excel (.xlsx)\n4. The tab crashes after about 3 seconds\n\nExporting the same chart to PNG works. Exporting with a range of 3 months or less also works. Chrome 141 on Windows 11.\n\nI'm taking screenshots for the board deck for now, but I need the numbers in Excel.",
+  "createdAt": "2026-10-05T09:05:00Z",
+  "reporter": { "name": "Andrea Molina", "email": "amolina@example.com", "department": "Sales Ops" },
+  "attachments": [{ "filename": "insight-crash.png", "mimeType": "image/png" }]
+}

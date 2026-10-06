@@ -1,0 +1,7 @@
+{
+  "id": "2005",
+  "title": "Printer by the kitchen not working",
+  "body": "The printer next to the kitchen on 3 keeps saying paper jam in tray 2 but tray 2 is empty and there's nothing inside. I need to print contracts for a client meeting at 4pm. Using the one on 2 for now.",
+  "createdAt": "2026-09-30T14:20:00Z",
+  "reporter": { "name": "Diego Herrera", "email": "dherrera@example.com", "department": "Legal" }
+}

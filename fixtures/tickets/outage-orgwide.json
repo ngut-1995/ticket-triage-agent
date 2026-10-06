@@ -1,0 +1,8 @@
+{
+  "id": "3004",
+  "title": "No internet on the whole 3rd floor",
+  "body": "Nobody on the 3rd floor can reach the internet since about 10:15. Both Wi-Fi and the wired ports at the desks are affected. Internal sites like the intranet still load, but anything outside (Google, Salesforce, Zoom) times out. The 2nd floor seems fine. Around 40 people up here and we have customer calls all afternoon.",
+  "createdAt": "2026-10-05T10:24:00Z",
+  "reporter": { "name": "Carolina Peña", "email": "cpena@example.com", "department": "Customer Success" },
+  "reporterPriority": "Critical"
+}

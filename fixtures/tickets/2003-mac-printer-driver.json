@@ -1,0 +1,7 @@
+{
+  "id": "2003",
+  "title": "Can't add the 3rd floor printer on my new MacBook",
+  "body": "I just got a new MacBook and I can't add the 3rd floor printer (PRN-3F-01). When I try to add it in System Settings > Printers it says \"The software for this printer isn't available\". My old Windows laptop prints to it fine, so the printer itself works.\n\nIn the meantime I'm emailing documents to a colleague so they can print them for me.",
+  "createdAt": "2026-09-29T11:05:00Z",
+  "reporter": { "name": "Paula Giménez", "email": "pgimenez@example.com", "department": "Marketing" }
+}

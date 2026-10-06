@@ -1,0 +1,7 @@
+{
+  "id": "3011",
+  "title": "Grey lines on everything printed from the Finance printer",
+  "body": "Everything we print on the Finance printer on the 2nd floor comes out with grey vertical lines down the page. It happens with PDFs, Excel and Word, so it's not one file. The invoices we send to customers look terrible. We're printing on the 3rd floor printer for anything that goes outside.",
+  "createdAt": "2026-10-05T14:05:00Z",
+  "reporter": { "name": "Rocío Navarro", "email": "rnavarro@example.com", "department": "Finance" }
+}
