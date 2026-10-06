@@ -2,7 +2,7 @@
 // user turn inside <ticket> / <candidate_tickets> tags, and `raw` never reaches the prompt.
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { LlmTriageOutputSchema, type Ticket } from "../domain/schemas.js";
+import { LlmTriageOutputSchema, type QualityRuleCode, type QualityWarning, type Ticket } from "../domain/schemas.js";
 import {
   CATEGORY_DEFINITIONS,
   CONFIDENCE_DEFINITIONS,
@@ -104,11 +104,7 @@ export function buildTriagePrompt(ticket: Ticket, candidates: Ticket[] = []): St
 }
 
 /** A problem to fix in the repair call: a QualityWarning, or a schema issue from the zod parse. */
-export interface RepairIssue {
-  code: string;
-  message: string;
-  requirementId?: string;
-}
+export type RepairIssue = Omit<QualityWarning, "code"> & { code: QualityRuleCode | "SCHEMA_INVALID" };
 
 /**
  * SPEC §5 repair call: the original prompt, the previous output (as the assistant turn) and every warning.

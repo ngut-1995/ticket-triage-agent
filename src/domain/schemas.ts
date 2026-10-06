@@ -41,20 +41,27 @@ const TicketFields = z.object({
     .optional(),
 });
 
-export type Ticket = z.output<typeof TicketFields> & { raw?: Record<string, unknown> };
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+// Moves unknown top-level fields into `raw`. Anything that is not an object is left for the schema to reject.
+const collectRaw = (input: unknown): unknown => {
+  if (!isPlainObject(input)) return input;
+  const ticket: Record<string, unknown> = {};
+  const raw: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    (key in TicketFields.shape ? ticket : raw)[key] = value;
+  }
+  return Object.keys(raw).length > 0 ? { ...ticket, raw } : ticket;
+};
 
 // SPEC §3.1. Unknown top-level fields are preserved in `raw` and never sent to the LLM.
-export const TicketSchema = z
-  .looseObject(TicketFields.shape)
-  .transform((input): Ticket => {
-    const ticket: Record<string, unknown> = {};
-    const raw: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(input)) {
-      (key in TicketFields.shape ? ticket : raw)[key] = value;
-    }
-    if (Object.keys(raw).length > 0) ticket.raw = raw;
-    return ticket as Ticket;
-  });
+export const TicketSchema = z.preprocess(
+  collectRaw,
+  TicketFields.extend({ raw: z.record(z.string(), z.unknown()).optional() }),
+);
+
+export type Ticket = z.output<typeof TicketSchema>;
 
 /** Parses `input` as a Ticket (SPEC §3.1) or throws TicketValidationError. */
 export function parseTicket(input: unknown): Ticket {
