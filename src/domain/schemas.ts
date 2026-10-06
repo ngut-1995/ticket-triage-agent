@@ -10,11 +10,14 @@ import {
   URGENCIES,
 } from "./taxonomy.js";
 
+// SPEC §3.1: ISO-8601 date, or date-time with or without a zone ("Z" or an offset).
+const IsoTimestamp = z.union([z.iso.datetime({ offset: true, local: true }), z.iso.date()]);
+
 const TicketFields = z.object({
   id: z.string().min(1),
   title: z.string(),
   body: z.string(),
-  createdAt: z.iso.datetime({ offset: true }),
+  createdAt: IsoTimestamp,
   reporter: z
     .object({
       name: z.string().optional(),
@@ -28,7 +31,7 @@ const TicketFields = z.object({
       z.object({
         author: z.string(),
         body: z.string(),
-        createdAt: z.iso.datetime({ offset: true }),
+        createdAt: IsoTimestamp,
       }),
     )
     .optional(),
