@@ -1,28 +1,13 @@
 // SPEC §5 quality validator. Pure and deterministic: it reports problems and never mutates its inputs.
 import type { QualityRuleCode, QualityWarning, Requirement, Ticket, TriageResult } from "../domain/schemas.js";
+import { UNBLOCK_FIELDS, VAGUE_TERMS } from "../domain/taxonomy.js";
 
-// SPEC §4.5 rule 4. Matched case-insensitively as whole words / phrases.
-export const VAGUE_TERMS = [
-  "fast",
-  "quickly",
-  "easy",
-  "user-friendly",
-  "intuitive",
-  "ASAP",
-  "properly",
-  "correctly",
-  "as expected",
-  "better",
-  "improve",
-  "optimize",
-  "etc.",
-  "and/or",
-] as const;
+// SPEC §6 lists VAGUE_TERMS here; it is defined with the rest of the taxonomy.
+export { VAGUE_TERMS };
 
 const MAX_SUMMARY_CHARS = 280;
 const MAX_QUESTIONS = 5;
-// Non-requirement targets a question may unblock (SPEC §3.4 MissingInfoQuestion.unblocks).
-const UNBLOCK_FIELDS = new Set(["category", "priority", "duplicate"]);
+const UNBLOCK_FIELD_SET: ReadonlySet<string> = new Set(UNBLOCK_FIELDS);
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
 // Boundaries treat letters, digits, "_" and "-" as word characters, so "fast" does not match "breakfast" and
@@ -120,7 +105,7 @@ export function validateResult(result: TriageResult, ticket: Ticket, candidateId
       warn("UNBLOCKS_NOTHING", `missingInfo[${i}] ("${q.question}") has an empty unblocks.`);
     }
     for (const target of q.unblocks) {
-      if (!UNBLOCK_FIELDS.has(target) && !requirementIds.has(target)) {
+      if (!UNBLOCK_FIELD_SET.has(target) && !requirementIds.has(target)) {
         warn("DANGLING_UNBLOCKS", `missingInfo[${i}] unblocks "${target}", which is not a requirement ID.`, target);
       }
     }

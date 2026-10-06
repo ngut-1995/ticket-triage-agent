@@ -12,20 +12,21 @@ import {
   PRIORITIES,
   TEAMS,
   URGENCIES,
+  type Confidence,
 } from "../src/domain/taxonomy.js";
 
-const Category = z.enum(CATEGORIES);
-const Confidence = z.enum(CONFIDENCES);
+const CategorySchema = z.enum(CATEGORIES);
+const ConfidenceSchema = z.enum(CONFIDENCES);
 
 const CaseExpectSchema = z.strictObject({
   // Exact matches (SPEC §7).
   disposition: z.enum(DISPOSITIONS),
   notActionableReason: z.enum(NOT_ACTIONABLE_REASONS).optional(),
   category: z.strictObject({
-    primary: Category,
-    secondary: z.array(Category),
+    primary: CategorySchema,
+    secondary: z.array(CategorySchema),
     /** Other primaries that also pass. If the primary is one of `secondary`, the expected primary must be secondary. */
-    alsoAccept: z.array(Category).optional(),
+    alsoAccept: z.array(CategorySchema).optional(),
   }),
   /** Duplicate IDs the result must list with confidence "high": exactly this set. */
   highDuplicates: z.array(z.string()),
@@ -44,8 +45,8 @@ const CaseExpectSchema = z.strictObject({
     .optional(),
   reporterPriority: z.string().optional(),
   /** Upper bounds: the result's confidence must not be higher. */
-  categoryConfidence: Confidence.optional(),
-  priorityConfidence: Confidence.optional(),
+  categoryConfidence: ConfidenceSchema.optional(),
+  priorityConfidence: ConfidenceSchema.optional(),
   flags: z
     .strictObject({ containsSensitiveData: z.boolean().optional(), possiblePromptInjection: z.boolean().optional() })
     .optional(),
@@ -57,7 +58,7 @@ const CaseExpectSchema = z.strictObject({
   suggestedSplitMin: z.number().int().nonnegative().optional(),
   // Per-case checks.
   missingInfoMustUnblock: z.array(z.string()).optional(),
-  suggestedSplitCategories: z.array(Category).optional(),
+  suggestedSplitCategories: z.array(CategorySchema).optional(),
   reviewerNoteMentions: z.string().optional(),
   priorityMustNotBe: z.array(z.enum(PRIORITIES)).optional(),
   /** Every requirement is about this issue (heuristic: shares a word of 3+ letters with it). */
@@ -90,7 +91,8 @@ export interface CheckOutcome {
   detail: string;
 }
 
-const CONFIDENCE_RANK = { low: 0, medium: 1, high: 2 } as const;
+// CONFIDENCES is ordered low → high.
+const confidenceRank = (confidence: Confidence): number => CONFIDENCES.indexOf(confidence);
 
 // Implementation activity rather than an observable end state (SPEC §4.5 rules 3 and 6).
 const IT_ACTOR = /\b(technician|administrator|admin|it staff|helpdesk|help desk|service desk|support team)\b/i;
@@ -172,8 +174,8 @@ export function checkCase(result: unknown, expectInput: CaseExpect): CheckOutcom
   if (exp.reporterPriority !== undefined) {
     oneOf("reporterPriority", r.priority.reporterPriority, exp.reporterPriority);
   }
-  const atMost = (check: string, actual: keyof typeof CONFIDENCE_RANK, max: keyof typeof CONFIDENCE_RANK) =>
-    add(check, CONFIDENCE_RANK[actual] <= CONFIDENCE_RANK[max], `got ${actual}, want at most ${max}`);
+  const atMost = (check: string, actual: Confidence, max: Confidence) =>
+    add(check, confidenceRank(actual) <= confidenceRank(max), `got ${actual}, want at most ${max}`);
   if (exp.categoryConfidence) atMost("categoryConfidence", r.category.confidence, exp.categoryConfidence);
   if (exp.priorityConfidence) atMost("priorityConfidence", r.priority.confidence, exp.priorityConfidence);
   for (const [flag, want] of Object.entries(exp.flags ?? {})) {

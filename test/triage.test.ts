@@ -145,6 +145,7 @@ describe("triageTicket", () => {
       for (const [category, team] of Object.entries(taxonomy.DEFAULT_TEAM)) {
         expect(req.system).toContain(`\`${category}\` → \`${team}\``);
       }
+      for (const field of taxonomy.UNBLOCK_FIELDS) expect(req.system).toContain(`"${field}"`);
     });
 
     it("the system prompt states the §4.5 rules, including every vague term", async () => {

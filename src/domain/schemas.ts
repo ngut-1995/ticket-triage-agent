@@ -88,7 +88,7 @@ const RequirementSchema = z.object({
 const MissingInfoQuestionSchema = z.object({
   question: z.string(),
   why: z.string(),
-  // Requirement IDs ("R2") and/or "category" | "priority" | "duplicate". Dangling IDs are a validator concern.
+  // Requirement IDs ("R2") and/or UNBLOCK_FIELDS (taxonomy.ts). Dangling IDs are a validator concern.
   unblocks: z.array(z.string()),
 });
 
