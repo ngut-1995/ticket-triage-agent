@@ -98,20 +98,15 @@ export async function triageTicket(input: unknown, deps: TriageDeps): Promise<Tr
   throw new TriageOutputError(repaired.issues, repairResponse.output);
 }
 
-// SPEC §6.2 step 5 and the §3.3/§4.1 invariants computed in code (never trusted from the LLM):
-// priority.value and suggestedTeam are null iff not_actionable, and notActionableReason exists only then.
+// SPEC §6.2 step 5: the fields computed in code (never trusted from the LLM). Everything else, including a null
+// suggestedTeam or a stray notActionableReason, passes through so validateResult reports DISPOSITION_MISMATCH and
+// the repair call can fix it. The one exception: not_actionable always gets suggestedTeam null (SPEC §3.3).
 function toResult(llm: LlmTriageOutput, ticket: Ticket, candidatesSent: boolean, model: string): TriageResult {
-  const { notActionableReason, ...rest } = llm;
   const notActionable = llm.disposition === "not_actionable";
   const { impact, urgency } = llm.priority;
-  const defaultTeam = DEFAULT_TEAM[llm.category.primary];
-  const team = llm.suggestedTeam ?? {
-    team: defaultTeam,
-    rationale: `Default team for category ${llm.category.primary} (no team was suggested).`,
-  };
+  const team = llm.suggestedTeam;
   return {
-    ...rest,
-    ...(notActionable && notActionableReason !== undefined ? { notActionableReason } : {}),
+    ...llm,
     ticketId: ticket.id,
     reviewStatus: "pending_review",
     priority: {
@@ -119,7 +114,10 @@ function toResult(llm: LlmTriageOutput, ticket: Ticket, candidatesSent: boolean,
       value: !notActionable && impact && urgency ? derivePriority(impact, urgency) : null,
       ...(ticket.reporterPriority === undefined ? {} : { reporterPriority: ticket.reporterPriority }),
     },
-    suggestedTeam: notActionable ? null : { ...team, overridesDefault: team.team !== defaultTeam },
+    suggestedTeam:
+      notActionable || team === null
+        ? null
+        : { ...team, overridesDefault: team.team !== DEFAULT_TEAM[llm.category.primary] },
     // SPEC §4.3 step 4: with no candidates sent there is no duplicate reasoning.
     possibleDuplicates: candidatesSent ? llm.possibleDuplicates : [],
     qualityWarnings: [],
