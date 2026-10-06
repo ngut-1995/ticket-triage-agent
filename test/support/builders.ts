@@ -69,3 +69,13 @@ export const notActionableLlmOutput = (): LlmTriageOutput => ({
   suggestedTeam: null,
   requirements: [],
 });
+
+export const notActionableTriageResult = (): TriageResult => {
+  const llm = notActionableLlmOutput();
+  return {
+    ...validTriageResult(),
+    ...llm,
+    priority: { ...llm.priority, value: null },
+    suggestedTeam: null,
+  };
+};
