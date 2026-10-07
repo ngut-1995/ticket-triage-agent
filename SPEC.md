@@ -305,6 +305,7 @@ fixtures/
 eval/
   cases.json                [{ fixture, corpus?, expect: {...} }]
   run.ts                    `npm run eval` scorecard against the real model
+  config.ts                 eval provider/model/key resolution, scorecard header
 test/
   priority.test.ts  prefilter.test.ts  validate.test.ts  schemas.test.ts
   triage.test.ts    cli.test.ts        file-source.test.ts
@@ -452,8 +453,15 @@ npm scripts to add:
 - `cli.test.ts`: exit codes, stdout is valid `TriageResultSchema` JSON, and
   `--out` writes the file. The LLM is injected through a test seam.
 
-**Golden eval (`npm run eval`) runs against the real model** and needs
-`ANTHROPIC_API_KEY`. For each case in `eval/cases.json` it checks:
+**Golden eval (`npm run eval`) runs against the real model.** It resolves the
+provider and model like the CLI (§6.4, `src/llm/provider.ts`), from the
+environment only: `TRIAGE_PROVIDER` (default `claude`), then `TRIAGE_MODEL` or
+the provider's default model. It needs the chosen provider's key
+(`ANTHROPIC_API_KEY` for `claude`, `DEEPSEEK_API_KEY` for `deepseek`). If that
+key is unset, or the provider is unknown, it exits `2` before the first LLM
+call with an error that names the variable. Without `TRIAGE_PROVIDER` it runs
+against Claude, as before. The cases and thresholds are the same for every
+provider. For each case in `eval/cases.json` it checks:
 
 - **Exact matches:** `disposition`, `category.primary`, `priority.value`, and
   the set of duplicate IDs with high confidence.
@@ -462,8 +470,11 @@ npm scripts to add:
 - **Per-case checks:** e.g. `flags.possiblePromptInjection === true`, or
   `suggestedSplit.length ≥ 1`.
 
-It prints a pass/fail scorecard and exits non-zero if any case fails. It is not
-run in CI by default.
+It prints a pass/fail scorecard and exits non-zero if any case fails. The
+scorecard header names the provider and model, each case line marks whether
+the repair call was made, and the summary counts the cases that needed repair
+(with DeepSeek the schema is only a prompt instruction, §6.1, so repairs are
+expected to be more frequent). It is not run in CI by default.
 
 ## 8. Fixtures (minimum set, ~12)
 

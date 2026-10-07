@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { TriageResult } from "../src/domain/schemas.js";
 import { checkCase, EvalCaseSchema, type CaseExpect, type CheckOutcome } from "../eval/check.js";
+import { resolveEvalConfig, scorecardHeader } from "../eval/config.js";
+import { DEFAULT_MODEL } from "../src/llm/claude.js";
+import { DEEPSEEK_DEFAULT_MODEL } from "../src/llm/deepseek.js";
 import { notActionableTriageResult, readJson, validTriageResult } from "./support/builders.js";
 
 // Hand-built expectations; values mirror the shapes used in eval/cases.json.
@@ -316,5 +319,51 @@ describe("checkCase", () => {
       quoted.requirements[0]!.source.quote = `the password I'm using is ${secret}`;
       expect(check(quoted, exp)).toEqual(["mustNotContain"]);
     });
+  });
+});
+
+describe("resolveEvalConfig", () => {
+  it("defaults to claude with its default model and ANTHROPIC_API_KEY, as before TRIAGE_PROVIDER", () => {
+    expect(resolveEvalConfig({ ANTHROPIC_API_KEY: "sk-ant" })).toEqual({
+      ok: true,
+      config: { provider: "claude", model: DEFAULT_MODEL, apiKey: "sk-ant" },
+    });
+  });
+
+  it("picks the provider from TRIAGE_PROVIDER and that provider's key and default model", () => {
+    const env = { TRIAGE_PROVIDER: "deepseek", DEEPSEEK_API_KEY: "sk-ds", ANTHROPIC_API_KEY: "sk-ant" };
+    expect(resolveEvalConfig(env)).toEqual({
+      ok: true,
+      config: { provider: "deepseek", model: DEEPSEEK_DEFAULT_MODEL, apiKey: "sk-ds" },
+    });
+  });
+
+  it("takes the model from TRIAGE_MODEL", () => {
+    const env = { TRIAGE_PROVIDER: "deepseek", TRIAGE_MODEL: "deepseek-pro", DEEPSEEK_API_KEY: "k" };
+    const resolved = resolveEvalConfig(env);
+    expect(resolved.ok && resolved.config.model).toBe("deepseek-pro");
+  });
+
+  it.each<[Record<string, string>, string]>([
+    [{}, "ANTHROPIC_API_KEY"],
+    [{ TRIAGE_PROVIDER: "deepseek", ANTHROPIC_API_KEY: "sk-ant" }, "DEEPSEEK_API_KEY"],
+    [{ TRIAGE_PROVIDER: "deepseek", DEEPSEEK_API_KEY: "" }, "DEEPSEEK_API_KEY"],
+  ])("fails without the chosen provider's key, naming it (%o)", (env, variable) => {
+    const resolved = resolveEvalConfig(env);
+    expect(resolved.ok).toBe(false);
+    expect(!resolved.ok && resolved.error).toContain(variable);
+  });
+
+  it("rejects an unknown TRIAGE_PROVIDER", () => {
+    const resolved = resolveEvalConfig({ TRIAGE_PROVIDER: "gpt", ANTHROPIC_API_KEY: "sk-ant" });
+    expect(!resolved.ok && resolved.error).toContain('unknown provider "gpt"');
+  });
+});
+
+describe("scorecardHeader", () => {
+  it("shows the case count, provider and model", () => {
+    expect(scorecardHeader(25, { provider: "deepseek", model: "deepseek-flash", apiKey: "secret" })).toBe(
+      "Golden eval: 25 cases, provider deepseek, model deepseek-flash",
+    );
   });
 });
