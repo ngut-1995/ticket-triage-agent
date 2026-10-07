@@ -7,10 +7,10 @@ import { parseArgs } from "node:util";
 import { errorMessage, formatZodIssues } from "../src/domain/errors.js";
 import { LlmTriageOutputSchema, parseTicket } from "../src/domain/schemas.js";
 import { ClaudeClient } from "../src/llm/claude.js";
+import { DeepSeekClient } from "../src/llm/deepseek.js";
 import { buildTriagePrompt } from "../src/prompt/build.js";
 import { validateResult } from "../src/quality/validate.js";
 import { toResult } from "../src/triage.js";
-import { DeepSeekClient } from "./deepseek-client.js";
 
 /** USD per million tokens (input, output). DeepSeek: peak cache-miss rates, so an upper bound. */
 const PRICES: Record<string, { input: number; output: number }> = {
