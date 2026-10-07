@@ -85,7 +85,7 @@ export async function triageTicket(input: unknown, deps: TriageDeps): Promise<Tr
 // SPEC §6.2 step 5: the fields computed in code (never trusted from the LLM). Everything else, including a null
 // suggestedTeam or a stray notActionableReason, passes through so validateResult reports DISPOSITION_MISMATCH and
 // the repair call can fix it. The one exception: not_actionable always gets suggestedTeam null (SPEC §3.3).
-function toResult(output: LlmTriageOutput, ticket: Ticket, candidatesSent: boolean, model: string): TriageResult {
+export function toResult(output: LlmTriageOutput, ticket: Ticket, candidatesSent: boolean, model: string): TriageResult {
   const notActionable = output.disposition === "not_actionable";
   const { impact, urgency } = output.priority;
   const team = output.suggestedTeam;

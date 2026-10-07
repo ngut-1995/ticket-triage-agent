@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "triage": "tsx src/cli.ts",
-    "eval": "tsx eval/run.ts"
+    "eval": "tsx eval/run.ts",
+    "smoke": "tsx scripts/smoke.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
