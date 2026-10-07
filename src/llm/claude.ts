@@ -4,11 +4,12 @@ import { LLMError, type LLMClient, type StructuredRequest, type StructuredRespon
 
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
 
-/** The model to use: `explicit`, then `TRIAGE_MODEL`, then DEFAULT_MODEL. */
+/** The model to use: `explicit`, then `TRIAGE_MODEL`, then `fallback` (the provider's default). */
 export const resolveModel = (
   explicit: string | undefined,
   env: Record<string, string | undefined> = process.env,
-): string => explicit ?? env.TRIAGE_MODEL ?? DEFAULT_MODEL;
+  fallback: string = DEFAULT_MODEL,
+): string => explicit ?? env.TRIAGE_MODEL ?? fallback;
 
 export interface ClaudeClientOptions {
   /** Defaults to `ANTHROPIC_API_KEY`. A missing key fails the first request, not construction. */

@@ -6,6 +6,7 @@ import { runCli, type CliClientFactory } from "../src/cli.js";
 import { TriageResultSchema } from "../src/domain/schemas.js";
 import { LLMError, type LLMClient } from "../src/llm/client.js";
 import { FakeClient } from "../src/llm/fake.js";
+import type { LlmConfig } from "../src/llm/provider.js";
 import { notActionableLlmOutput, validLlmOutput } from "./support/builders.js";
 
 const BUG_CLEAR = "fixtures/tickets/bug-clear.json";
@@ -25,14 +26,16 @@ async function run(argv: string[], options: { llm?: LLMClient | CliClientFactory
   return { code, stdout: stdout.text, stderr: stderr.text };
 }
 
-/** A client factory that records the model it was built with and reports it back as the model used. */
+/** A client factory that records the config it was built with and reports the model back as the model used. */
 function recordingFactory() {
+  const configs: LlmConfig[] = [];
   const models: string[] = [];
-  const factory: CliClientFactory = ({ model }) => {
-    models.push(model);
-    return { generateStructured: async () => ({ output: validLlmOutput(), model }) };
+  const factory: CliClientFactory = (config) => {
+    configs.push(config);
+    models.push(config.model);
+    return { generateStructured: async () => ({ output: validLlmOutput(), model: config.model }) };
   };
-  return { factory, models };
+  return { factory, configs, models };
 }
 
 describe("runCli: invalid input and usage (exit 2, no LLM call)", () => {
@@ -204,5 +207,90 @@ describe("runCli: model selection", () => {
     const { code } = await run(["fixtures/invalid/missing-body.json"], { llm: factory });
     expect(code).toBe(2);
     expect(models).toEqual([]);
+  });
+});
+
+describe("runCli: provider selection", () => {
+  const KEYS = { ANTHROPIC_API_KEY: "anthropic-key", DEEPSEEK_API_KEY: "deepseek-key" };
+
+  it("defaults to claude with ANTHROPIC_API_KEY and the Claude default model", async () => {
+    const { factory, configs } = recordingFactory();
+    const { code } = await run([BUG_CLEAR], { llm: factory, env: KEYS });
+    expect(code).toBe(0);
+    expect(configs).toEqual([{ provider: "claude", model: "claude-sonnet-5-5", apiKey: "anthropic-key" }]);
+  });
+
+  it("selects deepseek from TRIAGE_PROVIDER, with DEEPSEEK_API_KEY and deepseek-flash", async () => {
+    const { factory, configs } = recordingFactory();
+    const { code, stdout } = await run([BUG_CLEAR], { llm: factory, env: { ...KEYS, TRIAGE_PROVIDER: "deepseek" } });
+    expect(code).toBe(0);
+    expect(configs).toEqual([{ provider: "deepseek", model: "deepseek-flash", apiKey: "deepseek-key" }]);
+    expect(TriageResultSchema.parse(JSON.parse(stdout)).meta.model).toBe("deepseek-flash");
+  });
+
+  it("lets --provider override TRIAGE_PROVIDER", async () => {
+    const a = recordingFactory();
+    await run([BUG_CLEAR, "--provider", "deepseek"], { llm: a.factory, env: { ...KEYS, TRIAGE_PROVIDER: "claude" } });
+    expect(a.configs.map((c) => c.provider)).toEqual(["deepseek"]);
+
+    const b = recordingFactory();
+    await run([BUG_CLEAR, "--provider", "claude"], { llm: b.factory, env: { ...KEYS, TRIAGE_PROVIDER: "deepseek" } });
+    expect(b.configs).toEqual([{ provider: "claude", model: "claude-sonnet-5-5", apiKey: "anthropic-key" }]);
+  });
+
+  it("applies --model and TRIAGE_MODEL to deepseek", async () => {
+    const a = recordingFactory();
+    await run([BUG_CLEAR, "--provider", "deepseek", "--model", "deepseek-v4-pro"], {
+      llm: a.factory,
+      env: { TRIAGE_MODEL: "other-model" },
+    });
+    expect(a.models).toEqual(["deepseek-v4-pro"]);
+
+    const b = recordingFactory();
+    await run([BUG_CLEAR, "--provider", "deepseek"], { llm: b.factory, env: { TRIAGE_MODEL: "deepseek-v4-pro" } });
+    expect(b.models).toEqual(["deepseek-v4-pro"]);
+  });
+
+  it.each([
+    ["--provider", [BUG_CLEAR, "--provider", "openai"], {}],
+    ["TRIAGE_PROVIDER", [BUG_CLEAR], { TRIAGE_PROVIDER: "openai" }],
+  ])("exits 2 with the usage for an unknown provider from %s, without building a client", async (_name, argv, env) => {
+    const { factory, configs } = recordingFactory();
+    const { code, stdout, stderr } = await run(argv, { llm: factory, env });
+    expect(code).toBe(2);
+    expect(stderr).toMatch(/unknown provider "openai"/);
+    expect(stderr).toMatch(/usage: triage/i);
+    expect(stdout).toBe("");
+    expect(configs).toEqual([]);
+  });
+
+  it("reports an unknown provider before reading the ticket", async () => {
+    const { code, stderr } = await run(["fixtures/does-not-exist.json", "--provider", "openai"]);
+    expect(code).toBe(2);
+    expect(stderr).toMatch(/unknown provider/);
+    expect(stderr).not.toMatch(/does-not-exist/);
+  });
+
+  it("does not build a client when the input is invalid with --provider deepseek", async () => {
+    const { factory, configs } = recordingFactory();
+    const { code } = await run(["fixtures/invalid/missing-body.json", "--provider", "deepseek"], { llm: factory });
+    expect(code).toBe(2);
+    expect(configs).toEqual([]);
+  });
+
+  it("exits 3 naming DEEPSEEK_API_KEY when deepseek is chosen and its key is unset", async () => {
+    // The Anthropic key must not be used for DeepSeek. The client fails before any request, so this stays offline.
+    const { code, stdout, stderr } = await run([BUG_CLEAR, "--provider", "deepseek"], {
+      env: { ANTHROPIC_API_KEY: "anthropic-key" },
+    });
+    expect(code).toBe(3);
+    expect(stdout).toBe("");
+    expect(stderr).toMatch(/DEEPSEEK_API_KEY is not set/);
+  });
+
+  it("shows --provider in --help", async () => {
+    const { code, stdout } = await run(["--help"]);
+    expect(code).toBe(0);
+    expect(stdout).toMatch(/--provider <claude\|deepseek>/);
   });
 });
