@@ -6,7 +6,7 @@ import { runCli, type CliClientFactory } from "../src/cli.js";
 import { TriageResultSchema } from "../src/domain/schemas.js";
 import { LLMError, type LLMClient } from "../src/llm/client.js";
 import { FakeClient } from "../src/llm/fake.js";
-import type { LlmConfig } from "../src/llm/provider.js";
+import { createLlmClient, type LlmConfig } from "../src/llm/provider.js";
 import { notActionableLlmOutput, validLlmOutput } from "./support/builders.js";
 
 const BUG_CLEAR = "fixtures/tickets/bug-clear.json";
@@ -29,13 +29,26 @@ async function run(argv: string[], options: { llm?: LLMClient | CliClientFactory
 /** A client factory that records the config it was built with and reports the model back as the model used. */
 function recordingFactory() {
   const configs: LlmConfig[] = [];
-  const models: string[] = [];
   const factory: CliClientFactory = (config) => {
     configs.push(config);
-    models.push(config.model);
     return { generateStructured: async () => ({ output: validLlmOutput(), model: config.model }) };
   };
-  return { factory, configs, models };
+  return { factory, configs };
+}
+
+const modelsOf = (configs: LlmConfig[]) => configs.map((c) => c.model);
+
+/** The real client for the resolved config, with a fetch that fails the test if it is ever called. */
+function offlineRealClients() {
+  const fetchCalls: string[] = [];
+  const factory: CliClientFactory = (config) =>
+    createLlmClient(config, {
+      fetch: async (input) => {
+        fetchCalls.push(String(input));
+        throw new Error("network access in a test");
+      },
+    });
+  return { factory, fetchCalls };
 }
 
 describe("runCli: invalid input and usage (exit 2, no LLM call)", () => {
@@ -182,31 +195,31 @@ describe("runCli: LLM and output errors (exit 3)", () => {
 
 describe("runCli: model selection", () => {
   it("builds the client with --model, overriding TRIAGE_MODEL, and reports it in meta.model", async () => {
-    const { factory, models } = recordingFactory();
+    const { factory, configs } = recordingFactory();
     const { code, stdout } = await run([BUG_CLEAR, "--model", "claude-opus-5-5"], {
       llm: factory,
       env: { TRIAGE_MODEL: "claude-haiku-5" },
     });
     expect(code).toBe(0);
-    expect(models).toEqual(["claude-opus-5-5"]);
+    expect(modelsOf(configs)).toEqual(["claude-opus-5-5"]);
     expect(JSON.parse(stdout).meta.model).toBe("claude-opus-5-5");
   });
 
   it("falls back to TRIAGE_MODEL, then the default model", async () => {
     const a = recordingFactory();
     await run([BUG_CLEAR], { llm: a.factory, env: { TRIAGE_MODEL: "claude-haiku-5" } });
-    expect(a.models).toEqual(["claude-haiku-5"]);
+    expect(modelsOf(a.configs)).toEqual(["claude-haiku-5"]);
 
     const b = recordingFactory();
     await run([BUG_CLEAR], { llm: b.factory });
-    expect(b.models).toEqual(["claude-sonnet-5-5"]);
+    expect(modelsOf(b.configs)).toEqual(["claude-sonnet-5-5"]);
   });
 
   it("does not build a client when the input is invalid", async () => {
-    const { factory, models } = recordingFactory();
+    const { factory, configs } = recordingFactory();
     const { code } = await run(["fixtures/invalid/missing-body.json"], { llm: factory });
     expect(code).toBe(2);
-    expect(models).toEqual([]);
+    expect(modelsOf(configs)).toEqual([]);
   });
 });
 
@@ -244,11 +257,11 @@ describe("runCli: provider selection", () => {
       llm: a.factory,
       env: { TRIAGE_MODEL: "other-model" },
     });
-    expect(a.models).toEqual(["deepseek-v4-pro"]);
+    expect(modelsOf(a.configs)).toEqual(["deepseek-v4-pro"]);
 
     const b = recordingFactory();
     await run([BUG_CLEAR, "--provider", "deepseek"], { llm: b.factory, env: { TRIAGE_MODEL: "deepseek-v4-pro" } });
-    expect(b.models).toEqual(["deepseek-v4-pro"]);
+    expect(modelsOf(b.configs)).toEqual(["deepseek-v4-pro"]);
   });
 
   it.each([
@@ -278,14 +291,17 @@ describe("runCli: provider selection", () => {
     expect(configs).toEqual([]);
   });
 
-  it("exits 3 naming DEEPSEEK_API_KEY when deepseek is chosen and its key is unset", async () => {
-    // The Anthropic key must not be used for DeepSeek. The client fails before any request, so this stays offline.
-    const { code, stdout, stderr } = await run([BUG_CLEAR, "--provider", "deepseek"], {
-      env: { ANTHROPIC_API_KEY: "anthropic-key" },
-    });
+  it.each([
+    ["deepseek", "DEEPSEEK_API_KEY", { ANTHROPIC_API_KEY: "anthropic-key" }],
+    ["claude", "ANTHROPIC_API_KEY", { DEEPSEEK_API_KEY: "deepseek-key" }],
+  ])("exits 3 naming %s's key variable when it is unset", async (provider, keyEnv, env) => {
+    // The other provider's key must not be used. The real client is built, but its fetch never reaches the network.
+    const { factory, fetchCalls } = offlineRealClients();
+    const { code, stdout, stderr } = await run([BUG_CLEAR, "--provider", provider], { llm: factory, env });
     expect(code).toBe(3);
     expect(stdout).toBe("");
-    expect(stderr).toMatch(/DEEPSEEK_API_KEY is not set/);
+    expect(stderr).toMatch(new RegExp(`${keyEnv} is not set`));
+    expect(fetchCalls).toEqual([]);
   });
 
   it("shows --provider in --help", async () => {
