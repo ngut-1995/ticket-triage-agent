@@ -9,4 +9,5 @@ export type { TicketSource } from "./sources/ticket-source.js";
 export { FileTicketSource, type FileTicketSourceOptions } from "./sources/file.js";
 export { LLMError, type LLMClient, type StructuredRequest, type StructuredResponse } from "./llm/client.js";
 export { ClaudeClient, DEFAULT_MODEL, type ClaudeClientOptions } from "./llm/claude.js";
+export { DeepSeekClient, DEEPSEEK_DEFAULT_MODEL, type DeepSeekClientOptions } from "./llm/deepseek.js";
 export { FakeClient } from "./llm/fake.js";

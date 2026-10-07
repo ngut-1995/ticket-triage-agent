@@ -1,12 +1,14 @@
 // SPEC §7 golden eval (`npm run eval`): triage every case in eval/cases.json with the real model,
 // check it against the hand labels, print a scorecard, and exit non-zero if any case fails.
-// Needs ANTHROPIC_API_KEY. Not run in CI.
+// Provider from TRIAGE_PROVIDER (default claude), model from TRIAGE_MODEL; needs that provider's key
+// (ANTHROPIC_API_KEY or DEEPSEEK_API_KEY). Not run in CI.
 import { readdirSync, readFileSync } from "node:fs";
 import { errorMessage } from "../src/domain/errors.js";
 import { TicketSchema, type Ticket } from "../src/domain/schemas.js";
-import { ClaudeClient } from "../src/llm/claude.js";
+import { createLlmClient } from "../src/llm/provider.js";
 import { triageTicket } from "../src/triage.js";
 import { checkCase, EvalCaseSchema, type CheckOutcome, type EvalCase } from "./check.js";
+import { resolveEvalConfig, scorecardHeader } from "./config.js";
 
 const root = new URL("../", import.meta.url);
 const readJson = (path: string): unknown => JSON.parse(readFileSync(new URL(path, root), "utf8"));
@@ -21,33 +23,39 @@ function loadCorpus(c: EvalCase): Ticket[] | undefined {
 }
 
 async function main(): Promise<number> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("eval: ANTHROPIC_API_KEY is not set. The golden eval runs against the real model; set it and retry.");
+  const resolved = resolveEvalConfig();
+  if (!resolved.ok) {
+    console.error(resolved.error);
     return 2;
   }
 
   const cases = EvalCaseSchema.array().parse(readJson("eval/cases.json"));
-  const llm = new ClaudeClient();
-  console.log(`Golden eval: ${cases.length} cases, model ${llm.model}\n`);
+  const llm = createLlmClient(resolved.config);
+  console.log(`${scorecardHeader(cases.length, resolved.config)}\n`);
 
   let failedCases = 0;
+  let repairedCases = 0;
   for (const [i, c] of cases.entries()) {
     const label = `#${String(i + 1).padStart(2, "0")} ${c.fixture}${c.kind ? ` [${c.kind}]` : ""}`;
     let outcomes: CheckOutcome[];
+    let repaired = false;
     try {
       const corpus = loadCorpus(c);
       const result = await triageTicket(readJson(c.fixture), corpus ? { llm, corpus } : { llm });
+      repaired = result.meta.repairAttempted;
       outcomes = checkCase(result, c.expect);
     } catch (error) {
       outcomes = [{ check: "triage", pass: false, detail: errorMessage(error) }];
     }
     const failures = outcomes.filter((o) => !o.pass);
     if (failures.length > 0) failedCases++;
-    console.log(`${failures.length === 0 ? "PASS" : "FAIL"} ${label} (${outcomes.length - failures.length}/${outcomes.length} checks)`);
+    if (repaired) repairedCases++;
+    const checks = `${outcomes.length - failures.length}/${outcomes.length} checks${repaired ? ", repaired" : ""}`;
+    console.log(`${failures.length === 0 ? "PASS" : "FAIL"} ${label} (${checks})`);
     for (const f of failures) console.log(`       ✗ ${f.check}: ${f.detail}`);
   }
 
-  console.log(`\n${cases.length - failedCases}/${cases.length} cases passed`);
+  console.log(`\n${cases.length - failedCases}/${cases.length} cases passed, ${repairedCases} needed repair`);
   return failedCases === 0 ? 0 : 1;
 }
 

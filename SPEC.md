@@ -274,7 +274,7 @@ issues as the warnings. If parsing still fails after the repair, triage throws
 
 ```
 src/
-  index.ts                  public exports: triageTicket, types, FileTicketSource, ClaudeClient
+  index.ts                  public exports: triageTicket, types, FileTicketSource, ClaudeClient, DeepSeekClient
   cli.ts                    `triage` CLI entry (bin)
   triage.ts                 triageTicket(): orchestration
   domain/
@@ -285,6 +285,8 @@ src/
   llm/
     client.ts               LLMClient interface, LLMError
     claude.ts               ClaudeClient (Anthropic SDK)
+    deepseek.ts             DeepSeekClient (DeepSeek Chat Completions, native fetch)
+    provider.ts             provider/model/key resolution and client construction (CLI, eval)
     fake.ts                 FakeClient (scripted, records calls)
   prompt/
     build.ts                buildTriagePrompt(), buildRepairPrompt(); PROMPT_VERSION
@@ -303,6 +305,7 @@ fixtures/
 eval/
   cases.json                [{ fixture, corpus?, expect: {...} }]
   run.ts                    `npm run eval` scorecard against the real model
+  config.ts                 eval provider/model/key resolution, scorecard header
 test/
   priority.test.ts  prefilter.test.ts  validate.test.ts  schemas.test.ts
   triage.test.ts    cli.test.ts        file-source.test.ts
@@ -336,6 +339,20 @@ class LLMError extends Error { retryable: boolean }
   `@anthropic-ai/sdk` and forces structured JSON output that matches
   `jsonSchema`. It reads `ANTHROPIC_API_KEY` and `TRIAGE_MODEL` (default
   `claude-sonnet-5-5`). It retries on network errors and HTTP 429/5xx.
+- `DeepSeekClient({ apiKey?, model?, timeoutMs = 60_000, maxRetries = 2, fetch? })`
+  calls DeepSeek's OpenAI-compatible Chat Completions API with native `fetch`.
+  It reads `DEEPSEEK_API_KEY` and `TRIAGE_MODEL` (default `deepseek-flash`).
+  DeepSeek only supports `response_format: json_object`, so the client appends
+  `jsonSchema` and an instruction to reply with a single JSON object to the
+  system prompt. **It does not guarantee the schema**: only valid JSON. The
+  zod parse and the repair loop (§5) are the only check. It retries network
+  errors, timeouts, HTTP 429/5xx and empty content up to `maxRetries` times
+  with a short exponential backoff (500 ms, doubling) that honors
+  `retry-after`; any single wait, including one asked for by `retry-after`,
+  is capped at 10 s. Other 4xx, `finish_reason: "length"`,
+  `finish_reason: "content_filter"` and invalid JSON are non-retryable. A
+  missing key fails the first request, and the key never appears in error
+  messages or their causes.
 - `FakeClient(responses: unknown[] | ((req) => unknown))` returns scripted
   outputs in order, records every `StructuredRequest` in `.calls`, and throws if
   it runs out of responses.
@@ -384,7 +401,19 @@ interface.
 
 ```
 triage <ticket.json> [--corpus <open-tickets.json>] [--out <result.json>] [--model <id>]
+       [--provider <claude|deepseek>]
 ```
+
+- Provider: `--provider`, then `TRIAGE_PROVIDER`, then `claude`. An unknown
+  value is a usage error (exit `2`), reported before the ticket is read.
+- Model: `--model`, then `TRIAGE_MODEL`, then the provider's default
+  (`claude-sonnet-5-5` / `deepseek-flash`). The model is not checked against
+  the provider: a wrong one fails at the API (exit `3`).
+- Key: the chosen provider's own variable (`ANTHROPIC_API_KEY` /
+  `DEEPSEEK_API_KEY`). If it is unset, the run exits `3` with an error that
+  names that variable. Invalid input still exits `2` without building a
+  client, whatever the provider.
+- This resolution lives in `src/llm/provider.ts`, shared with the golden eval.
 
 - Writes the `TriageResult` JSON to stdout (or to `--out`).
 - Writes a short human-readable summary to stderr: disposition, category,
@@ -395,7 +424,8 @@ triage <ticket.json> [--corpus <open-tickets.json>] [--out <result.json>] [--mod
 ### 6.5 Dependencies
 
 Runtime: `@anthropic-ai/sdk`, `zod`, and zod's JSON-schema export.
-Dev: `tsx` (for `npm run eval`). No other runtime dependencies.
+Dev: `tsx` (for `npm run eval`). No other runtime dependencies. `DeepSeekClient`
+uses native `fetch` and adds none.
 
 npm scripts to add:
 - `"eval": "tsx eval/run.ts"`
@@ -425,8 +455,15 @@ npm scripts to add:
 - `cli.test.ts`: exit codes, stdout is valid `TriageResultSchema` JSON, and
   `--out` writes the file. The LLM is injected through a test seam.
 
-**Golden eval (`npm run eval`) runs against the real model** and needs
-`ANTHROPIC_API_KEY`. For each case in `eval/cases.json` it checks:
+**Golden eval (`npm run eval`) runs against the real model.** It resolves the
+provider and model like the CLI (§6.4, `src/llm/provider.ts`), from the
+environment only: `TRIAGE_PROVIDER` (default `claude`), then `TRIAGE_MODEL` or
+the provider's default model. It needs the chosen provider's key
+(`ANTHROPIC_API_KEY` for `claude`, `DEEPSEEK_API_KEY` for `deepseek`). If that
+key is unset, or the provider is unknown, it exits `2` before the first LLM
+call with an error that names the variable. Without `TRIAGE_PROVIDER` it runs
+against Claude, as before. The cases and thresholds are the same for every
+provider. For each case in `eval/cases.json` it checks:
 
 - **Exact matches:** `disposition`, `category.primary`, `priority.value`, and
   the set of duplicate IDs with high confidence.
@@ -435,8 +472,11 @@ npm scripts to add:
 - **Per-case checks:** e.g. `flags.possiblePromptInjection === true`, or
   `suggestedSplit.length ≥ 1`.
 
-It prints a pass/fail scorecard and exits non-zero if any case fails. It is not
-run in CI by default.
+It prints a pass/fail scorecard and exits non-zero if any case fails. The
+scorecard header names the provider and model, each case line marks whether
+the repair call was made, and the summary counts the cases that needed repair
+(with DeepSeek the schema is only a prompt instruction, §6.1, so repairs are
+expected to be more frequent). It is not run in CI by default.
 
 ## 8. Fixtures (minimum set, ~12)
 
@@ -480,8 +520,8 @@ prefilter decoy the LLM must reject.
 - **Batch, queue or streaming triage.** Exactly one ticket per invocation.
 - **Embedding or vector search** for duplicates, and corpora beyond fixture
   scale.
-- **LLM providers other than Claude**, beyond the `LLMClient` seam and
-  `FakeClient`.
+- **LLM providers other than Claude and DeepSeek** (OpenAI, Gemini, local
+  models), beyond the `LLMClient` seam and `FakeClient`.
 - **Configurable taxonomy**, plus routing to named individuals, SLA timers and
   business-hours logic.
 - **PII redaction.** Only detection of secrets is in scope (flag + reviewer
@@ -534,8 +574,9 @@ npm run build
    passing.
 6. **No write path:** `TicketSource` exposes only `getTicket` and
    `listOpenTickets`, and `LLMClient` exposes only `generateStructured`. The
-   only outbound network call in `src/` is the Anthropic Messages request in
-   `src/llm/claude.ts`, and the only file write is `--out` in `src/cli.ts`.
+   only outbound network calls in `src/` are the Anthropic Messages request in
+   `src/llm/claude.ts` and the DeepSeek Chat Completions request in
+   `src/llm/deepseek.ts`, and the only file write is `--out` in `src/cli.ts`.
    (A plain keyword grep is not used: it false-positives on
    `messages.create` and `createdAt`.)
 
@@ -645,3 +686,14 @@ verified: **T** = `npm test` (offline, `FakeClient`), **E** = `npm run eval`
       `fixtures/invalid/`. (V)
 - [ ] `npm run eval` reports every case as passing and exits non-zero if any
       case fails. (E, V)
+
+### AC-13 Provider selection (§6.4)
+- [ ] `--provider` overrides `TRIAGE_PROVIDER`, and the default is `claude`. (T)
+- [ ] An unknown provider exits `2` with the usage, without reading the
+      ticket or building a client. Invalid input with `--provider deepseek`
+      also exits `2` without building a client. (T)
+- [ ] The client is built with the chosen provider's key and default model,
+      unless `--model` or `TRIAGE_MODEL` is set. A missing key exits `3` with an
+      error that names the provider's variable. (T)
+- [ ] `triage fixtures/tickets/bug-clear.json --provider deepseek` exits `0`
+      and writes a valid `TriageResult`. (V)

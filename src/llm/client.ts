@@ -20,6 +20,13 @@ export interface LLMClient {
   generateStructured(req: StructuredRequest): Promise<StructuredResponse>;
 }
 
+/** The model to use: `explicit`, then `TRIAGE_MODEL`, then `fallback` (the provider's default). */
+export const resolveModel = (
+  explicit: string | undefined,
+  env: Record<string, string | undefined>,
+  fallback: string,
+): string => explicit ?? env.TRIAGE_MODEL ?? fallback;
+
 export class LLMError extends Error {
   readonly retryable: boolean;
 

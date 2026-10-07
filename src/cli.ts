@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// SPEC §6.4. `triage <ticket.json> [--corpus <open-tickets.json>] [--out <result.json>] [--model <id>]`
+// SPEC §6.4. `triage <ticket.json> [--corpus <open-tickets.json>] [--out <result.json>] [--model <id>] [--provider <claude|deepseek>]`
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { errorMessage, formatZodIssues, TicketValidationError } from "./domain/errors.js";
 import { parseTicket, TicketSchema, type Ticket, type TriageResult } from "./domain/schemas.js";
-import { ClaudeClient, resolveModel } from "./llm/claude.js";
 import { LLMError, type LLMClient } from "./llm/client.js";
+import { createLlmClient, PROVIDERS, resolveLlmConfig, type LlmConfig } from "./llm/provider.js";
 import { TriageOutputError, triageTicket } from "./triage.js";
 
 export const EXIT_OK = 0;
@@ -14,13 +14,16 @@ export const EXIT_UNEXPECTED = 1;
 export const EXIT_INVALID_INPUT = 2;
 export const EXIT_LLM_ERROR = 3;
 
-const USAGE = "Usage: triage <ticket.json> [--corpus <open-tickets.json>] [--out <result.json>] [--model <id>]";
+const USAGE = `Usage: triage <ticket.json> [--corpus <open-tickets.json>] [--out <result.json>] [--model <id>] [--provider <${PROVIDERS.join("|")}>]`;
 
-/** Builds the LLM client once the input is valid. Receives the resolved model (`--model` > TRIAGE_MODEL > default). */
-export type CliClientFactory = (config: { model: string; apiKey: string }) => LLMClient;
+/**
+ * Builds the LLM client once the input is valid. Receives the resolved provider (`--provider` > TRIAGE_PROVIDER >
+ * claude), model (`--model` > TRIAGE_MODEL > the provider's default) and that provider's key.
+ */
+export type CliClientFactory = (config: LlmConfig) => LLMClient;
 
 export interface CliIO {
-  /** Test seam: a ready client, or a factory that receives the resolved model. Defaults to ClaudeClient. */
+  /** Test seam: a ready client, or a factory that receives the resolved config. Defaults to the provider's client. */
   llm?: LLMClient | CliClientFactory | undefined;
   stdout: { write(chunk: string): unknown };
   stderr: { write(chunk: string): unknown };
@@ -36,7 +39,8 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
     return code;
   };
 
-  let args: { file: string; corpus?: string | undefined; out?: string | undefined; model?: string | undefined };
+  let args: { file: string; corpus?: string | undefined; out?: string | undefined };
+  let config: LlmConfig;
   try {
     const { values, positionals } = parseArgs({
       args: argv,
@@ -46,6 +50,7 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
         corpus: { type: "string" },
         out: { type: "string" },
         model: { type: "string" },
+        provider: { type: "string" },
         help: { type: "boolean", short: "h" },
       },
     });
@@ -54,7 +59,9 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
       return EXIT_OK;
     }
     if (positionals.length !== 1) throw new UsageError("expected exactly one ticket file");
-    args = { file: positionals[0]!, corpus: values.corpus, out: values.out, model: values.model };
+    args = { file: positionals[0]!, corpus: values.corpus, out: values.out };
+    // An unknown provider is a usage error, reported before the ticket is read.
+    config = resolveLlmConfig({ provider: values.provider, model: values.model }, io.env);
   } catch (error) {
     return fail(EXIT_INVALID_INPUT, `${errorMessage(error)}\n${USAGE}`);
   }
@@ -78,12 +85,7 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
     return fail(EXIT_INVALID_INPUT, errorMessage(error));
   }
 
-  const model = resolveModel(args.model, io.env);
-  const apiKey = io.env.ANTHROPIC_API_KEY ?? "";
-  const llm =
-    typeof io.llm === "function"
-      ? io.llm({ model, apiKey })
-      : (io.llm ?? new ClaudeClient({ apiKey, model }));
+  const llm = typeof io.llm === "function" ? io.llm(config) : (io.llm ?? createLlmClient(config));
 
   let result: TriageResult;
   try {
