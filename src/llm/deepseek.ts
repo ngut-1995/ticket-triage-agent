@@ -1,5 +1,5 @@
 import { errorMessage } from "../domain/errors.js";
-import { LLMError, type LLMClient, type StructuredRequest, type StructuredResponse } from "./client.js";
+import { LLMError, resolveModel, type LLMClient, type StructuredRequest, type StructuredResponse } from "./client.js";
 
 export const DEEPSEEK_DEFAULT_MODEL = "deepseek-flash";
 const BASE_URL = "https://api.deepseek.com";
@@ -41,7 +41,7 @@ export class DeepSeekClient implements LLMClient {
 
   constructor(options: DeepSeekClientOptions = {}) {
     this.apiKey = options.apiKey ?? process.env.DEEPSEEK_API_KEY;
-    this.model = options.model ?? process.env.TRIAGE_MODEL ?? DEEPSEEK_DEFAULT_MODEL;
+    this.model = resolveModel(options.model, process.env, DEEPSEEK_DEFAULT_MODEL);
     this.timeoutMs = options.timeoutMs ?? 60_000;
     this.maxRetries = options.maxRetries ?? 2;
     this.fetch = options.fetch ?? globalThis.fetch;

@@ -1,16 +1,37 @@
 // Provider, model and key resolution shared by the CLI and the golden eval (SPEC §6.4, §7).
-import { ClaudeClient, DEFAULT_MODEL, resolveModel } from "./claude.js";
-import type { LLMClient } from "./client.js";
+import { ClaudeClient, DEFAULT_MODEL } from "./claude.js";
+import { resolveModel, type LLMClient } from "./client.js";
 import { DEEPSEEK_DEFAULT_MODEL, DeepSeekClient } from "./deepseek.js";
 
 export const PROVIDERS = ["claude", "deepseek"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 export const DEFAULT_PROVIDER: Provider = "claude";
 
-/** Default model and API key variable of each provider. */
-const PROVIDER_DEFAULTS: Record<Provider, { model: string; apiKeyEnv: string }> = {
-  claude: { model: DEFAULT_MODEL, apiKeyEnv: "ANTHROPIC_API_KEY" },
-  deepseek: { model: DEEPSEEK_DEFAULT_MODEL, apiKeyEnv: "DEEPSEEK_API_KEY" },
+/** What createLlmClient passes to a provider's client. `fetch` is a test seam. */
+interface ClientInit {
+  apiKey: string;
+  model: string;
+  fetch?: typeof globalThis.fetch | undefined;
+}
+
+interface ProviderDefaults {
+  model: string;
+  apiKeyEnv: string;
+  create: (init: ClientInit) => LLMClient;
+}
+
+/** Default model, API key variable and client constructor of each provider. */
+const PROVIDER_DEFAULTS: Record<Provider, ProviderDefaults> = {
+  claude: {
+    model: DEFAULT_MODEL,
+    apiKeyEnv: "ANTHROPIC_API_KEY",
+    create: ({ apiKey, model, fetch }) => new ClaudeClient({ apiKey, model, ...(fetch ? { fetch } : {}) }),
+  },
+  deepseek: {
+    model: DEEPSEEK_DEFAULT_MODEL,
+    apiKeyEnv: "DEEPSEEK_API_KEY",
+    create: ({ apiKey, model, fetch }) => new DeepSeekClient({ apiKey, model, ...(fetch ? { fetch } : {}) }),
+  },
 };
 
 /** What a client is built from. `apiKey` is `""` when the provider's variable is unset. */
@@ -61,12 +82,13 @@ export function resolveLlmConfig(
   };
 }
 
-/** The real client for `config`. Builds nothing that touches the network until the first request. */
-export function createLlmClient({ provider, model, apiKey }: LlmConfig): LLMClient {
-  switch (provider) {
-    case "claude":
-      return new ClaudeClient({ apiKey, model });
-    case "deepseek":
-      return new DeepSeekClient({ apiKey, model });
-  }
+/**
+ * The real client for `config`. Builds nothing that touches the network until the first request. `options.fetch` is a
+ * test seam that replaces the global `fetch`.
+ */
+export function createLlmClient(
+  { provider, model, apiKey }: LlmConfig,
+  options: { fetch?: typeof globalThis.fetch } = {},
+): LLMClient {
+  return PROVIDER_DEFAULTS[provider].create({ apiKey, model, fetch: options.fetch });
 }

@@ -1,15 +1,8 @@
 import Anthropic, { APIConnectionError, APIError, type ClientOptions } from "@anthropic-ai/sdk";
 import { errorMessage } from "../domain/errors.js";
-import { LLMError, type LLMClient, type StructuredRequest, type StructuredResponse } from "./client.js";
+import { LLMError, resolveModel, type LLMClient, type StructuredRequest, type StructuredResponse } from "./client.js";
 
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
-
-/** The model to use: `explicit`, then `TRIAGE_MODEL`, then `fallback` (the provider's default). */
-export const resolveModel = (
-  explicit: string | undefined,
-  env: Record<string, string | undefined> = process.env,
-  fallback: string = DEFAULT_MODEL,
-): string => explicit ?? env.TRIAGE_MODEL ?? fallback;
 
 export interface ClaudeClientOptions {
   /** Defaults to `ANTHROPIC_API_KEY`. A missing key fails the first request, not construction. */
@@ -34,7 +27,7 @@ export class ClaudeClient implements LLMClient {
 
   constructor(options: ClaudeClientOptions = {}) {
     const apiKey = options.apiKey ?? process.env.ANTHROPIC_API_KEY;
-    this.model = resolveModel(options.model);
+    this.model = resolveModel(options.model, process.env, DEFAULT_MODEL);
     this.sdk = apiKey
       ? new Anthropic({
           apiKey,
