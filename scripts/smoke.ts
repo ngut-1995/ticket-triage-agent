@@ -6,8 +6,7 @@ import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { errorMessage, formatZodIssues } from "../src/domain/errors.js";
 import { LlmTriageOutputSchema, parseTicket } from "../src/domain/schemas.js";
-import { ClaudeClient } from "../src/llm/claude.js";
-import { DeepSeekClient } from "../src/llm/deepseek.js";
+import { createLlmClient, PROVIDERS, resolveLlmConfig, UnknownProviderError, type LlmConfig } from "../src/llm/provider.js";
 import { buildTriagePrompt } from "../src/prompt/build.js";
 import { validateResult } from "../src/quality/validate.js";
 import { toResult } from "../src/triage.js";
@@ -22,15 +21,16 @@ const PRICES: Record<string, { input: number; output: number }> = {
   "claude-fable-5-1": { input: 10, output: 50 },
 };
 
+const USAGE = `Usage: npm run smoke -- <ticket.json> [--provider ${PROVIDERS.join("|")}] (default: deepseek)\n`;
+
 async function main(): Promise<number> {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: { provider: { type: "string", default: "deepseek" } },
   });
   const file = positionals[0];
-  const provider = values.provider;
-  if (file === undefined || (provider !== "deepseek" && provider !== "claude")) {
-    process.stderr.write("Usage: npm run smoke -- <ticket.json> [--provider deepseek|claude]\n");
+  if (file === undefined) {
+    process.stderr.write(USAGE);
     return 2;
   }
 
@@ -40,8 +40,17 @@ async function main(): Promise<number> {
     // No .env: rely on the environment.
   }
 
+  let config: LlmConfig;
+  try {
+    config = resolveLlmConfig({ provider: values.provider });
+  } catch (error) {
+    if (!(error instanceof UnknownProviderError)) throw error;
+    process.stderr.write(`smoke: ${error.message}\n${USAGE}`);
+    return 2;
+  }
+
   const ticket = parseTicket(JSON.parse(await readFile(file, "utf8")));
-  const client = provider === "claude" ? new ClaudeClient() : new DeepSeekClient();
+  const client = createLlmClient(config);
 
   const start = performance.now();
   const response = await client.generateStructured(buildTriagePrompt(ticket));
@@ -62,7 +71,7 @@ async function main(): Promise<number> {
 
   const input = response.usage?.inputTokens ?? 0;
   const output = response.usage?.outputTokens ?? 0;
-  const price = PRICES[client.model];
+  const price = PRICES[config.model];
   const cost = price ? `$${((input * price.input + output * price.output) / 1e6).toFixed(4)}` : "unknown (no price for model)";
   process.stdout.write(
     [
