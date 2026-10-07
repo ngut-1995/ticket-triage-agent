@@ -286,6 +286,7 @@ src/
     client.ts               LLMClient interface, LLMError
     claude.ts               ClaudeClient (Anthropic SDK)
     deepseek.ts             DeepSeekClient (DeepSeek Chat Completions, native fetch)
+    provider.ts             provider/model/key resolution and client construction (CLI, eval)
     fake.ts                 FakeClient (scripted, records calls)
   prompt/
     build.ts                buildTriagePrompt(), buildRepairPrompt(); PROMPT_VERSION
@@ -397,7 +398,19 @@ interface.
 
 ```
 triage <ticket.json> [--corpus <open-tickets.json>] [--out <result.json>] [--model <id>]
+       [--provider <claude|deepseek>]
 ```
+
+- Provider: `--provider`, then `TRIAGE_PROVIDER`, then `claude`. An unknown
+  value is a usage error (exit `2`), reported before the ticket is read.
+- Model: `--model`, then `TRIAGE_MODEL`, then the provider's default
+  (`claude-sonnet-5-5` / `deepseek-flash`). The model is not checked against
+  the provider: a wrong one fails at the API (exit `3`).
+- Key: the chosen provider's own variable (`ANTHROPIC_API_KEY` /
+  `DEEPSEEK_API_KEY`). If it is unset, the run exits `3` with an error that
+  names that variable. Invalid input still exits `2` without building a
+  client, whatever the provider.
+- This resolution lives in `src/llm/provider.ts`, shared with the golden eval.
 
 - Writes the `TriageResult` JSON to stdout (or to `--out`).
 - Writes a short human-readable summary to stderr: disposition, category,
@@ -660,3 +673,14 @@ verified: **T** = `npm test` (offline, `FakeClient`), **E** = `npm run eval`
       `fixtures/invalid/`. (V)
 - [ ] `npm run eval` reports every case as passing and exits non-zero if any
       case fails. (E, V)
+
+### AC-13 Provider selection (§6.4)
+- [ ] `--provider` overrides `TRIAGE_PROVIDER`, and the default is `claude`. (T)
+- [ ] An unknown provider exits `2` with the usage, without reading the
+      ticket or building a client. Invalid input with `--provider deepseek`
+      also exits `2` without building a client. (T)
+- [ ] The client is built with the chosen provider's key and default model,
+      unless `--model` or `TRIAGE_MODEL` is set. A missing key exits `3` with an
+      error that names the provider's variable. (T)
+- [ ] `triage fixtures/tickets/bug-clear.json --provider deepseek` exits `0`
+      and writes a valid `TriageResult`. (V)
