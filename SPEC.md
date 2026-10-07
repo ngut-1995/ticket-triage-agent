@@ -274,7 +274,7 @@ issues as the warnings. If parsing still fails after the repair, triage throws
 
 ```
 src/
-  index.ts                  public exports: triageTicket, types, FileTicketSource, ClaudeClient
+  index.ts                  public exports: triageTicket, types, FileTicketSource, ClaudeClient, DeepSeekClient
   cli.ts                    `triage` CLI entry (bin)
   triage.ts                 triageTicket(): orchestration
   domain/
@@ -285,6 +285,7 @@ src/
   llm/
     client.ts               LLMClient interface, LLMError
     claude.ts               ClaudeClient (Anthropic SDK)
+    deepseek.ts             DeepSeekClient (DeepSeek Chat Completions, native fetch)
     fake.ts                 FakeClient (scripted, records calls)
   prompt/
     build.ts                buildTriagePrompt(), buildRepairPrompt(); PROMPT_VERSION
@@ -336,6 +337,18 @@ class LLMError extends Error { retryable: boolean }
   `@anthropic-ai/sdk` and forces structured JSON output that matches
   `jsonSchema`. It reads `ANTHROPIC_API_KEY` and `TRIAGE_MODEL` (default
   `claude-sonnet-5-5`). It retries on network errors and HTTP 429/5xx.
+- `DeepSeekClient({ apiKey?, model?, timeoutMs = 60_000, maxRetries = 2, fetch? })`
+  calls DeepSeek's OpenAI-compatible Chat Completions API with native `fetch`.
+  It reads `DEEPSEEK_API_KEY` and `TRIAGE_MODEL` (default `deepseek-flash`).
+  DeepSeek only supports `response_format: json_object`, so the client appends
+  `jsonSchema` and an instruction to reply with a single JSON object to the
+  system prompt. **It does not guarantee the schema**: only valid JSON. The
+  zod parse and the repair loop (§5) are the only check. It retries network
+  errors, timeouts, HTTP 429/5xx and empty content up to `maxRetries` times
+  with a short exponential backoff that honors `retry-after`. Other 4xx,
+  `finish_reason: "length"`, `finish_reason: "content_filter"` and invalid
+  JSON are non-retryable. A missing key fails the first request, and the key
+  never appears in error messages.
 - `FakeClient(responses: unknown[] | ((req) => unknown))` returns scripted
   outputs in order, records every `StructuredRequest` in `.calls`, and throws if
   it runs out of responses.
@@ -395,7 +408,8 @@ triage <ticket.json> [--corpus <open-tickets.json>] [--out <result.json>] [--mod
 ### 6.5 Dependencies
 
 Runtime: `@anthropic-ai/sdk`, `zod`, and zod's JSON-schema export.
-Dev: `tsx` (for `npm run eval`). No other runtime dependencies.
+Dev: `tsx` (for `npm run eval`). No other runtime dependencies. `DeepSeekClient`
+uses native `fetch` and adds none.
 
 npm scripts to add:
 - `"eval": "tsx eval/run.ts"`
@@ -480,8 +494,8 @@ prefilter decoy the LLM must reject.
 - **Batch, queue or streaming triage.** Exactly one ticket per invocation.
 - **Embedding or vector search** for duplicates, and corpora beyond fixture
   scale.
-- **LLM providers other than Claude**, beyond the `LLMClient` seam and
-  `FakeClient`.
+- **LLM providers other than Claude and DeepSeek** (OpenAI, Gemini, local
+  models), beyond the `LLMClient` seam and `FakeClient`.
 - **Configurable taxonomy**, plus routing to named individuals, SLA timers and
   business-hours logic.
 - **PII redaction.** Only detection of secrets is in scope (flag + reviewer
@@ -534,8 +548,9 @@ npm run build
    passing.
 6. **No write path:** `TicketSource` exposes only `getTicket` and
    `listOpenTickets`, and `LLMClient` exposes only `generateStructured`. The
-   only outbound network call in `src/` is the Anthropic Messages request in
-   `src/llm/claude.ts`, and the only file write is `--out` in `src/cli.ts`.
+   only outbound network calls in `src/` are the Anthropic Messages request in
+   `src/llm/claude.ts` and the DeepSeek Chat Completions request in
+   `src/llm/deepseek.ts`, and the only file write is `--out` in `src/cli.ts`.
    (A plain keyword grep is not used: it false-positives on
    `messages.create` and `createdAt`.)
 
