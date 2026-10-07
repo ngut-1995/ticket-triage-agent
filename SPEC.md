@@ -347,10 +347,12 @@ class LLMError extends Error { retryable: boolean }
   system prompt. **It does not guarantee the schema**: only valid JSON. The
   zod parse and the repair loop (§5) are the only check. It retries network
   errors, timeouts, HTTP 429/5xx and empty content up to `maxRetries` times
-  with a short exponential backoff that honors `retry-after`. Other 4xx,
-  `finish_reason: "length"`, `finish_reason: "content_filter"` and invalid
-  JSON are non-retryable. A missing key fails the first request, and the key
-  never appears in error messages.
+  with a short exponential backoff (500 ms, doubling) that honors
+  `retry-after`; any single wait, including one asked for by `retry-after`,
+  is capped at 10 s. Other 4xx, `finish_reason: "length"`,
+  `finish_reason: "content_filter"` and invalid JSON are non-retryable. A
+  missing key fails the first request, and the key never appears in error
+  messages or their causes.
 - `FakeClient(responses: unknown[] | ((req) => unknown))` returns scripted
   outputs in order, records every `StructuredRequest` in `.calls`, and throws if
   it runs out of responses.
