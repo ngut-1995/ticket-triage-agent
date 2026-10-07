@@ -97,9 +97,16 @@ export class DeepSeekClient implements LLMClient {
       throw new LLMError(message, { retryable: false });
     }
 
+    let raw: string;
+    try {
+      raw = await res.text();
+    } catch (error) {
+      // The connection dropped or timed out mid-body: a network error, so retryable.
+      throw new RetryableLLMError(`Network error reading the DeepSeek response: ${errorMessage(error)}`, error);
+    }
     let completion: ChatCompletion;
     try {
-      completion = (await res.json()) as ChatCompletion;
+      completion = JSON.parse(raw) as ChatCompletion;
     } catch (error) {
       throw new LLMError(`DeepSeek response body is not valid JSON (${req.schemaName})`, {
         retryable: false,
@@ -146,14 +153,45 @@ class RetryableLLMError extends LLMError {
   }
 }
 
-/** Any thrown value as an LLMError whose message never contains the key. */
+const REDACTED = "[redacted]";
+
+/**
+ * Any thrown value as an LLMError in which neither the message nor any error in the `cause` chain contains the key.
+ * Never mutates `error`: a leaking error is rebuilt instead.
+ */
 function redact(error: unknown, apiKey: string): LLMError {
   if (error instanceof LLMError) {
-    if (error.message.includes(apiKey)) error.message = error.message.replaceAll(apiKey, "[redacted]");
-    return error;
+    const cause = scrub(error.cause, apiKey);
+    if (!error.message.includes(apiKey) && cause === error.cause) return error;
+    const message = error.message.replaceAll(apiKey, REDACTED);
+    return error instanceof RetryableLLMError
+      ? new RetryableLLMError(message, cause, error.retryAfterMs)
+      : new LLMError(message, { retryable: error.retryable, cause });
   }
-  const message = `Unexpected error calling DeepSeek: ${errorMessage(error)}`.replaceAll(apiKey, "[redacted]");
-  return new LLMError(message, { retryable: false, cause: error });
+  const message = `Unexpected error calling DeepSeek: ${errorMessage(error)}`.replaceAll(apiKey, REDACTED);
+  return new LLMError(message, { retryable: false, cause: scrub(error, apiKey) });
+}
+
+/** `value` unchanged if it does not leak the key, else a copy (an Error keeps its name) with the key redacted. */
+function scrub(value: unknown, apiKey: string, depth = 0): unknown {
+  if (value === undefined || value === null) return value;
+  if (depth >= 8) return undefined; // Deep or cyclic chain: drop the rest rather than risk a leak.
+  if (typeof value === "string") return value.replaceAll(apiKey, REDACTED);
+  if (!(value instanceof Error)) {
+    let text: string;
+    try {
+      text = JSON.stringify(value) ?? String(value);
+    } catch {
+      text = String(value);
+    }
+    return text.includes(apiKey) ? REDACTED : value;
+  }
+  const cause = scrub(value.cause, apiKey, depth + 1);
+  const leaks = value.message.includes(apiKey) || (value.stack ?? "").includes(apiKey);
+  if (!leaks && cause === value.cause) return value;
+  const copy = new Error(value.message.replaceAll(apiKey, REDACTED), cause === undefined ? undefined : { cause });
+  copy.name = value.name;
+  return copy;
 }
 
 /** `error.message` from an OpenAI-style error body, or the raw text, truncated. */

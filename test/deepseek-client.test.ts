@@ -248,6 +248,53 @@ describe("DeepSeekClient error mapping and retries", () => {
     expect(f.calls).toHaveLength(2);
   });
 
+  it("aborts a request that outlives timeoutMs and retries it as a network error", async () => {
+    vi.useRealTimers(); // AbortSignal.timeout runs on real timers.
+    const signals: AbortSignal[] = [];
+    const fetch = (_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) return reject(new Error("no AbortSignal on the request"));
+        signals.push(signal);
+        signal.addEventListener("abort", () => reject(signal.reason as Error));
+      });
+    const llm = new DeepSeekClient({ apiKey: KEY, fetch, timeoutMs: 20, maxRetries: 1 });
+
+    const err = await llm.generateStructured(request).then(
+      () => expect.fail("expected a timeout"),
+      (error: unknown) => error as LLMError,
+    );
+
+    expect(err).toBeInstanceOf(LLMError);
+    expect(err.retryable).toBe(true);
+    expect(err.message).toMatch(/timeout/i);
+    expect(signals).toHaveLength(2);
+    expect(signals.every((s) => s.aborted)).toBe(true);
+  });
+
+  it("retries a network failure while reading the response body, then succeeds", async () => {
+    const broken = new Response(
+      new ReadableStream({
+        pull(controller) {
+          controller.error(new TypeError("terminated"));
+        },
+      }),
+      { status: 200 },
+    );
+    const f = fakeFetch([broken, json(200, completionBody())]);
+    const res = await succeeds(client(f.fetch).generateStructured(request));
+    expect(res.output).toEqual({ category: "hardware" });
+    expect(f.calls).toHaveLength(2);
+  });
+
+  it("fails without retrying when the response body is not JSON", async () => {
+    const f = fakeFetch([new Response("<html>oops</html>", { status: 200 })]);
+    const err = await caught(client(f.fetch).generateStructured(request));
+    expect(err.retryable).toBe(false);
+    expect(err.message).toMatch(/not valid JSON/);
+    expect(f.calls).toHaveLength(1);
+  });
+
   it("waits for retry-after before retrying a 429", async () => {
     const f = fakeFetch([apiError(429, "slow down", { "retry-after": "3" }), json(200, completionBody())]);
     const pending = client(f.fetch).generateStructured(request);
@@ -295,5 +342,29 @@ describe("DeepSeekClient error mapping and retries", () => {
       const err = await caught(client(f.fetch, { maxRetries: 0 }).generateStructured(request));
       expect(err.message).not.toContain(KEY);
     }
+  });
+
+  it("never leaves the key anywhere in the cause chain, and does not mutate the original error", async () => {
+    const original = new TypeError(`connect failed with Bearer ${KEY}`, {
+      cause: new Error(`socket error, header ${KEY}`),
+    });
+    const f = fakeFetch([original]);
+    const err = await caught(client(f.fetch, { maxRetries: 0 }).generateStructured(request));
+
+    const chain: unknown[] = [];
+    for (let e: unknown = err; e !== undefined && chain.length < 20; e = (e as { cause?: unknown }).cause) {
+      chain.push(e);
+    }
+    expect(chain.length).toBeGreaterThan(1);
+    for (const e of chain) {
+      if (e instanceof Error) {
+        expect(e.message).not.toContain(KEY);
+        expect(e.stack ?? "").not.toContain(KEY);
+      } else {
+        expect(String(e)).not.toContain(KEY);
+      }
+    }
+    expect(original.message).toContain(KEY);
+    expect((original.cause as Error).message).toContain(KEY);
   });
 });
